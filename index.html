@@ -21,7 +21,7 @@
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body {
     margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
-    padding:calc(14px + env(safe-area-inset-top)) 14px calc(90px + env(safe-area-inset-bottom));
+    padding:calc(14px + env(safe-area-inset-top)) 14px calc(170px + env(safe-area-inset-bottom));
   }
   .wrap { max-width:640px; margin:0 auto; }
   header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
@@ -121,7 +121,15 @@
   .toast {
     background:var(--panel-hi); border:1px solid var(--line); border-radius:10px;
     padding:10px 14px; margin-bottom:8px; font-size:13px; line-height:1.45; display:none;
+    position:relative; cursor:pointer;
   }
+  .toast .x { position:absolute; top:6px; right:10px; color:var(--ink-dim); font-size:14px; }
+  .opts { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+  .opt {
+    padding:7px 13px; border-radius:16px; cursor:pointer; font-size:12.5px; font-weight:600;
+    background:var(--panel); color:var(--amber); border:1px solid var(--amber-dim); font-family:inherit;
+  }
+  .opt:active { background:var(--amber); color:var(--bg); }
   .toast .status { font-family:var(--mono); font-size:11.5px; margin-top:6px; }
   .toast .status.ok { color:var(--green); }
   .toast .status.bad { color:var(--red); }
@@ -157,7 +165,9 @@
 <div class="chatbar">
   <div class="inner">
     <div class="toast" id="toast">
+      <span class="x">✕</span>
       <div id="toast-reply"></div>
+      <div class="opts" id="toast-opts"></div>
       <div class="status" id="toast-status"></div>
     </div>
     <div class="row">
@@ -170,37 +180,19 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const GOAL_KCAL = 1900;
+const DEFAULT_GOAL = 1900;
 const LS_DIARY = "ledger-diary-v1";
 const LS_KEY   = "ledger-api-key";
+const LS_GOAL  = "ledger-goal";
 
-const SEED_DIARY = {
-  "2026-07-05": { weightKg: 73, bodyFatPct: null, meals: [
-    { name: "Day total (logged in earlier session)", kcal: 2476, note: "Itemized breakdown in prior chat" },
-  ]},
-  "2026-07-06": { weightKg: null, bodyFatPct: null, meals: [
-    { name: "Organic granola bites", kcal: 100, note: "Label-confirmed" },
-    { name: "Ham, cheese & scrambled egg burrito (medium)", kcal: 600 },
-    { name: "Detroit-style cheese pizza — 1 thick slice", kcal: 350 },
-    { name: "Large poutine — ¼ portion", kcal: 400 },
-    { name: "Mexican lager × 2 (16 oz)", kcal: 380 },
-    { name: "Coors Light × 2", kcal: 205 },
-    { name: "In-N-Out Double-Double — animal style, no pickles", kcal: 670 },
-    { name: "In-N-Out fries", kcal: 395 },
-    { name: "Diet Coke", kcal: 0 },
-  ]},
-  "2026-07-07": { weightKg: null, bodyFatPct: null, meals: [
-    { name: "Earl Grey & blueberry scone (large) — Prep & Pastry, Scottsdale", kcal: 480 },
-    { name: "Decaf black coffee × 4 cups", kcal: 10 },
-    { name: "White rice, ½ cup cooked", kcal: 100 },
-    { name: "In-N-Out patties × 2 w/ cheese & grilled onions", kcal: 360 },
-    { name: "In-N-Out spread, ½ portion", kcal: 40 },
-    { name: "TJ's salmon fillet in Soyaki sauce", kcal: 350 },
-    { name: "White rice, ½ cup cooked", kcal: 100 },
-    { name: "TJ's sesame Asian chopped salad kit — ⅓ bag", kcal: 120 },
-    { name: "Cherries × 6 small", kcal: 25 },
-  ]},
-};
+/* No personal data ships in this file — every device starts blank
+   and keeps its own private log in that browser's storage. */
+const SEED_DIARY = {};
+
+function getGoal() {
+  const g = parseInt(localStorage.getItem(LS_GOAL), 10);
+  return (g && g > 0) ? g : DEFAULT_GOAL;
+}
 
 /* ============================ state ============================ */
 let diary = loadDiary();
@@ -232,10 +224,13 @@ function pickDefaultDate() {
   return dates.includes(todayISO()) ? todayISO() : (dates[dates.length-1] || todayISO());
 }
 function ensureDay(d) {
-  if (!diary[d]) diary[d] = { weightKg: null, bodyFatPct: null, meals: [] };
+  if (!diary[d]) diary[d] = { weightKg: null, bodyFatPct: null, meals: [], exercise: [] };
+  if (!diary[d].exercise) diary[d].exercise = []; // older saved days
   return diary[d];
 }
 function dayTotal(d) { return (diary[d] ? diary[d].meals : []).reduce((s,m)=>s+(m.kcal||0),0); }
+function dayBurn(d) { return ((diary[d] && diary[d].exercise) ? diary[d].exercise : []).reduce((s,m)=>s+(m.kcal||0),0); }
+function dayNet(d) { return dayTotal(d) - dayBurn(d); }
 function fmtDay(iso) { return new Date(iso+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); }
 function fmtShort(iso) { return new Date(iso+"T12:00:00").toLocaleDateString("en-US",{month:"numeric",day:"numeric"}); }
 function fmtTime(d) { return d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); }
@@ -254,9 +249,9 @@ function renderRail() {
   const dates = Object.keys(diary).sort();
   rail.innerHTML = "";
   dates.forEach(d => {
-    const total = dayTotal(d);
-    const over = total > GOAL_KCAL;
-    const pct = Math.min(total/GOAL_KCAL,1)*100;
+    const total = dayNet(d);
+    const over = total > getGoal();
+    const pct = Math.min(total/getGoal(),1)*100;
     const btn = document.createElement("button");
     btn.className = "day-card" + (d===selected ? " active" : "");
     btn.innerHTML =
@@ -272,12 +267,15 @@ function renderRail() {
 
 function renderLog() {
   const v = document.getElementById("view-log");
-  const entry = diary[selected] || { meals: [] };
-  const total = dayTotal(selected);
-  const remaining = GOAL_KCAL - total;
+  const entry = diary[selected] || { meals: [], exercise: [] };
+  const exercise = entry.exercise || [];
+  const eaten = dayTotal(selected);
+  const burned = dayBurn(selected);
+  const net = eaten - burned;
+  const remaining = getGoal() - net;
   const over = remaining < 0;
-  const pct = Math.min(total/GOAL_KCAL,1)*100;
-  const overflowPct = over ? Math.min(((total-GOAL_KCAL)/GOAL_KCAL)*100,100) : 0;
+  const pct = Math.min(Math.max(net,0)/getGoal(),1)*100;
+  const overflowPct = over ? Math.min(((net-getGoal())/getGoal())*100,100) : 0;
 
   let mealsHtml;
   if (!entry.meals || !entry.meals.length) {
@@ -291,17 +289,29 @@ function renderLog() {
     ).join("") + '</div>';
   }
 
+  let exHtml = "";
+  if (exercise.length) {
+    exHtml = '<div style="font-family:var(--serif);font-size:15.5px;margin:18px 0 8px">Exercise</div>' +
+      '<div class="meals">' + exercise.map((m,i) =>
+      '<div class="meal"><div><div class="n">'+esc(m.name)+'</div>' +
+      (m.note ? '<div class="note">'+esc(m.note)+'</div>' : '') +
+      '</div><div style="display:flex;align-items:flex-start"><span class="k" style="color:var(--green)">−'+m.kcal.toLocaleString()+'</span>' +
+      '<button class="del" title="Remove" onclick="removeExercise(\''+selected+'\','+i+')">×</button></div></div>'
+    ).join("") + '</div>';
+  }
+
   v.innerHTML =
     '<div class="day-head"><span class="day-title">'+fmtDay(selected)+'</span>' +
-    '<span class="day-frac">'+total.toLocaleString()+' / '+GOAL_KCAL.toLocaleString()+' kcal</span></div>' +
+    '<span class="day-frac">'+net.toLocaleString()+' net / '+getGoal().toLocaleString()+' kcal</span></div>' +
     '<div class="progress"><div style="width:'+(over?100:pct)+'%;background:var(--'+(over?"amber-dim":"green")+')"></div></div>' +
     (over ? '<div class="overflow-bar"><div style="width:'+overflowPct+'%"></div></div>' : '') +
     '<div class="chips">' +
-      chip("Consumed", total.toLocaleString()) +
-      chip(over?"Over by":"Remaining", Math.abs(remaining).toLocaleString(), over?"var(--red)":"var(--green)") +
+      chip("Eaten", eaten.toLocaleString()) +
+      chip("Burned", burned ? "−"+burned.toLocaleString() : "0", burned ? "var(--green)" : undefined) +
+      chip(over?"Over by":"Available", Math.abs(remaining).toLocaleString(), over?"var(--red)":"var(--green)") +
       chip("Weight", entry.weightKg!=null ? entry.weightKg+" kg" : "—") +
       chip("Body fat", entry.bodyFatPct!=null ? entry.bodyFatPct+"%" : "—") +
-    '</div>' + mealsHtml;
+    '</div>' + mealsHtml + exHtml;
 }
 function chip(l,v,tone) {
   return '<div class="chip"><div class="l">'+l+'</div><div class="v" style="color:'+(tone||"var(--ink)")+'">'+v+'</div></div>';
@@ -310,6 +320,13 @@ function chip(l,v,tone) {
 function removeMeal(date, i) {
   if (!confirm("Remove \"" + diary[date].meals[i].name + "\"?")) return;
   diary[date].meals.splice(i,1);
+  try { saveDiary(); showToast(null, {ok:true, text:"Removed & saved."}); }
+  catch(e) { showToast(null, {ok:false, text:"Removed on screen but SAVE FAILED: "+e.message}); }
+  render();
+}
+function removeExercise(date, i) {
+  if (!confirm("Remove \"" + diary[date].exercise[i].name + "\"?")) return;
+  diary[date].exercise.splice(i,1);
   try { saveDiary(); showToast(null, {ok:true, text:"Removed & saved."}); }
   catch(e) { showToast(null, {ok:false, text:"Removed on screen but SAVE FAILED: "+e.message}); }
   render();
@@ -329,7 +346,7 @@ function renderTrends() {
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-trendWin);
   const rows = Object.keys(diary).sort()
     .filter(d => new Date(d+"T12:00:00") >= cutoff)
-    .map(d => ({ day: fmtShort(d), kcal: dayTotal(d), weight: diary[d].weightKg, bf: diary[d].bodyFatPct }));
+    .map(d => ({ day: fmtShort(d), kcal: dayNet(d), weight: diary[d].weightKg, bf: diary[d].bodyFatPct }));
 
   const css = getComputedStyle(document.documentElement);
   const C = n => css.getPropertyValue(n).trim();
@@ -339,8 +356,8 @@ function renderTrends() {
   charts.push(new Chart(document.getElementById("ch-kcal"), {
     type: "bar",
     data: { labels: rows.map(r=>r.day), datasets: [
-      { data: rows.map(r=>r.kcal), backgroundColor: rows.map(r=>r.kcal>GOAL_KCAL?C("--red"):C("--green")), borderRadius: 5 },
-      { type:"line", data: rows.map(()=>GOAL_KCAL), borderColor: C("--amber"), borderDash:[5,4], pointRadius:0, borderWidth:1.5 },
+      { data: rows.map(r=>r.kcal), backgroundColor: rows.map(r=>r.kcal>getGoal()?C("--red"):C("--green")), borderRadius: 5 },
+      { type:"line", data: rows.map(()=>getGoal()), borderColor: C("--amber"), borderDash:[5,4], pointRadius:0, borderWidth:1.5 },
     ]},
     options: { plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false},ticks:tickOpts}, y:{grid:gridOpts,ticks:tickOpts} } }
   }));
@@ -374,9 +391,13 @@ function renderData() {
       '<div class="btn-row">' +
         '<button class="btn primary" onclick="renderData()">Re-check</button>' +
         '<button class="btn" onclick="copyBackup(this)">Copy JSON backup</button>' +
-        '<button class="btn danger" onclick="restoreSeed(this)">Restore built-in data</button>' +
+        '<button class="btn danger" onclick="eraseAll(this)">Erase all data</button>' +
       '</div>' +
       '<div class="hint">Data lives in this browser\u2019s localStorage. It survives closing the tab and restarting the phone, but clearing browser data erases it \u2014 take a JSON backup now and then.</div>' +
+    '</div>' +
+    '<div class="panel-box"><div class="t">Daily calorie goal</div>' +
+      '<input type="text" inputmode="numeric" id="goal-input" value="'+getGoal()+'">' +
+      '<div class="btn-row"><button class="btn primary" onclick="saveGoal()">Save goal</button></div>' +
     '</div>' +
     '<div class="panel-box"><div class="t">Claude API key</div>' +
       '<input type="password" id="api-key" placeholder="sk-ant-…" value="'+esc(key)+'">' +
@@ -397,12 +418,21 @@ function copyBackup(btn) {
   navigator.clipboard.writeText(raw).then(()=>{ btn.textContent="Copied ✓"; })
     .catch(()=>{ alert("Clipboard unavailable — copy from the raw data box below."); });
 }
-function restoreSeed(btn) {
-  if (btn.dataset.armed !== "1") { btn.dataset.armed="1"; btn.textContent="Tap again to overwrite"; return; }
-  diary = JSON.parse(JSON.stringify(SEED_DIARY));
-  selected = pickDefaultDate();
-  try { saveDiary(); showToast(null,{ok:true,text:"Built-in data restored & saved."}); }
-  catch(e){ showToast(null,{ok:false,text:"Restore SAVE FAILED: "+e.message}); }
+function eraseAll(btn) {
+  if (btn.dataset.armed !== "1") { btn.dataset.armed="1"; btn.textContent="Tap again to erase EVERYTHING"; return; }
+  diary = {};
+  ensureDay(todayISO());
+  selected = todayISO();
+  try { saveDiary(); showToast(null,{ok:true,text:"All data erased. Starting fresh."}); }
+  catch(e){ showToast(null,{ok:false,text:"Erase SAVE FAILED: "+e.message}); }
+  render();
+}
+function saveGoal() {
+  const g = parseInt(document.getElementById("goal-input").value, 10);
+  if (!g || g < 500 || g > 10000) { alert("Enter a goal between 500 and 10,000 kcal."); return; }
+  localStorage.setItem(LS_GOAL, String(g));
+  document.getElementById("goal-label").textContent = getGoal().toLocaleString();
+  showToast(null,{ok:true,text:"Goal set to "+g.toLocaleString()+" kcal."});
   render();
 }
 function importBackup(btn) {
@@ -438,26 +468,72 @@ const sendBtn = document.getElementById("chat-send");
 input.addEventListener("keydown", e => { if (e.key==="Enter") handleSend(); });
 sendBtn.onclick = handleSend;
 
-function showToast(reply, status) {
+let toastTimer = null;
+let pendingText = null; // original message awaiting a clarification answer
+
+function showToast(reply, status, options) {
   const toast = document.getElementById("toast");
   const r = document.getElementById("toast-reply");
   const s = document.getElementById("toast-status");
+  const o = document.getElementById("toast-opts");
+  clearTimeout(toastTimer);
   r.textContent = reply || "";
   r.style.display = reply ? "" : "none";
   s.textContent = status ? status.text : "";
   s.className = "status " + (status && status.ok ? "ok" : "bad");
   s.style.display = status ? "" : "none";
-  toast.style.display = (reply || status) ? "block" : "none";
+  o.innerHTML = "";
+  if (options && options.length) {
+    options.forEach(opt => {
+      const b = document.createElement("button");
+      b.className = "opt";
+      b.textContent = opt;
+      b.onclick = (e) => { e.stopPropagation(); answerClarification(opt); };
+      o.appendChild(b);
+    });
+  }
+  toast.style.display = (reply || status || (options && options.length)) ? "block" : "none";
+  /* Auto-hide: 5s normally, 10s for errors. Clarification questions stay
+     until answered or dismissed. */
+  if (!(options && options.length)) {
+    const ms = (status && !status.ok) ? 10000 : 5000;
+    toastTimer = setTimeout(hideToast, ms);
+  }
+}
+function hideToast() {
+  clearTimeout(toastTimer);
+  pendingText = null;
+  document.getElementById("toast").style.display = "none";
+}
+document.getElementById("toast").addEventListener("click", hideToast);
+
+function answerClarification(option) {
+  const original = pendingText;
+  pendingText = null;
+  hideToast();
+  if (original) submitEntry(original + " (clarification: " + option + ")");
 }
 
 async function handleSend() {
   const text = input.value.trim();
   if (!text || sendBtn.disabled) return;
   input.value = "";
+  submitEntry(text);
+}
+
+async function submitEntry(text) {
   sendBtn.disabled = true; sendBtn.textContent = "…";
   try {
     const key = localStorage.getItem(LS_KEY);
     const result = key ? await parseWithClaude(text, key) : parseOffline(text);
+
+    /* Claude may ask a clarifying question (size / type / quantity). */
+    if (result.question && result.question.text && Array.isArray(result.question.options) && result.question.options.length) {
+      pendingText = text;
+      showToast(result.question.text, null, result.question.options.slice(0, 4));
+      return;
+    }
+
     const applied = applyUpdates(result.updates || []);
     if (applied) {
       const bytes = saveDiary();
@@ -484,11 +560,23 @@ function applyUpdates(updates) {
       entry.meals = entry.meals.filter((_,i)=>!drop.has(i));
       touched = true;
     }
+    if (Array.isArray(u.removeExerciseIndexes) && u.removeExerciseIndexes.length) {
+      const dropE = new Set(u.removeExerciseIndexes);
+      entry.exercise = entry.exercise.filter((_,i)=>!dropE.has(i));
+      touched = true;
+    }
     if (Array.isArray(u.addMeals)) for (const m of u.addMeals) {
       if (m && typeof m.name==="string" && typeof m.kcal==="number") {
         const meal = { name: m.name, kcal: Math.round(m.kcal) };
         if (m.note) meal.note = m.note;
         entry.meals.push(meal); touched = true;
+      }
+    }
+    if (Array.isArray(u.addExercise)) for (const m of u.addExercise) {
+      if (m && typeof m.name==="string" && typeof m.kcal==="number") {
+        const ex = { name: m.name, kcal: Math.abs(Math.round(m.kcal)) };
+        if (m.note) ex.note = m.note;
+        entry.exercise.push(ex); touched = true;
       }
     }
     if (typeof u.weightKg==="number") { entry.weightKg = u.weightKg; touched = true; }
@@ -504,9 +592,11 @@ function parseOffline(text) {
   if (m) return { updates:[{date:todayISO(), weightKg:parseFloat(m[1])}], reply:"Weight logged: "+m[1]+" kg." };
   m = t.match(/^(?:bf|body\s*fat)\s+([\d.]+)/i);
   if (m) return { updates:[{date:todayISO(), bodyFatPct:parseFloat(m[1])}], reply:"Body fat logged: "+m[1]+"%." };
+  m = t.match(/^(.+?)\s*=\s*-\s*(\d+)\s*$/);
+  if (m) return { updates:[{date:todayISO(), addExercise:[{name:m[1].trim(), kcal:parseInt(m[2],10)}]}], reply:"Exercise logged: "+m[1].trim()+" — "+m[2]+" kcal burned." };
   m = t.match(/^(.+?)\s*=\s*(\d+)\s*$/);
   if (m) return { updates:[{date:todayISO(), addMeals:[{name:m[1].trim(), kcal:parseInt(m[2],10)}]}], reply:"Logged "+m[1].trim()+" — "+m[2]+" kcal." };
-  return { updates: [], reply: "No API key set, so I can only parse the format: food name = 350 (or: weight 72.5 / bf 18). Add a key in the Data tab for natural-language logging." };
+  return { updates: [], reply: "No API key set, so I can only parse: food name = 350, exercise name = -300, weight 72.5, or bf 18. Add a key in the Data tab for natural-language logging." };
 }
 
 async function parseWithClaude(userText, apiKey) {
@@ -518,10 +608,14 @@ ${JSON.stringify(diary, null, 1)}
 
 The user typed: "${userText}"
 
-Interpret this as diary updates. Estimate calories realistically (typical restaurant/label values, sensible rounding). Resolve relative days like "yesterday" against today's date. If a calorie count is label-confirmed, use it exactly with note "Label-confirmed". For corrections/removals, use removeIndexes on the matching meal's array index for that date. Weight is kg; body fat is %. If the message isn't loggable, return empty updates and answer briefly in "reply".
+Interpret this as diary updates. Estimate calories realistically (typical restaurant/label values, sensible rounding). Resolve relative days like "yesterday" against today's date. If a calorie count is label-confirmed, use it exactly with note "Label-confirmed". For corrections/removals, use removeIndexes (meals) or removeExerciseIndexes (exercise) on the matching array index for that date. Weight is kg; body fat is %. If the message isn't loggable, return empty updates and answer briefly in "reply".
+
+EXERCISE: if the user describes physical activity (a run, gym session, cycling, a long walk, sport, etc.), log it in addExercise with kcal = estimated calories BURNED (positive number). Estimate from activity, duration/distance, and intensity for a ~73 kg adult; if duration or intensity is missing and it changes the estimate meaningfully, ask a clarifying question instead. Exercise reduces the day's net calories in the app automatically — never log it as a negative meal.
+
+IMPORTANT — clarifying questions: if the calorie estimate would swing meaningfully (roughly 75+ kcal) based on size, quantity, preparation, or type that the user did not specify (e.g. "an apricot" could be small/large/dried, "a latte" could be 8/12/16 oz or whole/skim/oat milk, "fries" could be small/medium/large), do NOT guess. Instead return empty updates and a "question" object with 2-4 short tappable options, each including its approximate kcal, e.g. {"text":"What kind of apricot?","options":["Fresh, small (~17 kcal)","Fresh, large (~35 kcal)","Dried, 5 pieces (~85 kcal)"]}. Ask at most ONE question per message and only when it genuinely matters — if the message says "(clarification: …)" it contains the answer, so log it without asking again. For trivial ambiguity, just use the typical value.
 
 Respond with ONLY a JSON object, no markdown fences:
-{"updates":[{"date":"YYYY-MM-DD","addMeals":[{"name":"string","kcal":0,"note":"optional"}],"removeIndexes":[],"weightKg":null,"bodyFatPct":null}],"reply":"short confirmation with kcal breakdown"}`;
+{"updates":[{"date":"YYYY-MM-DD","addMeals":[{"name":"string","kcal":0,"note":"optional"}],"addExercise":[{"name":"string","kcal":0,"note":"optional"}],"removeIndexes":[],"removeExerciseIndexes":[],"weightKg":null,"bodyFatPct":null}],"question":null,"reply":"short confirmation with kcal breakdown"}`;
 
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -549,9 +643,10 @@ Respond with ONLY a JSON object, no markdown fences:
 }
 
 /* ============================ boot ============================ */
-document.getElementById("goal-label").textContent = GOAL_KCAL.toLocaleString();
+document.getElementById("goal-label").textContent = getGoal().toLocaleString();
 try {
-  if (!localStorage.getItem(LS_DIARY)) saveDiary(); // persist seed on first run
+  if (!Object.keys(diary).length) { ensureDay(todayISO()); selected = todayISO(); }
+  if (!localStorage.getItem(LS_DIARY)) saveDiary(); // persist first run
 } catch(e) {
   showToast(null,{ok:false,text:"WARNING: this browser blocked storage — data will NOT persist. "+e.message});
 }
