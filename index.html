@@ -70,10 +70,25 @@
   .meal .n { font-size:14.5px; line-height:1.35; }
   .meal .note { color:var(--amber); font-size:11.5px; margin-top:3px; font-family:var(--mono); }
   .meal .k { font-family:var(--mono); font-size:15px; font-weight:700; white-space:nowrap; }
-  .meal .del {
-    background:none; border:none; color:var(--ink-dim); font-size:16px; cursor:pointer;
-    padding:0 0 0 6px; line-height:1;
+  .meal .right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .ctrls { display:flex; gap:2px; }
+  .meal .del, .meal .mv {
+    background:none; border:1px solid var(--line); border-radius:6px; color:var(--ink-dim);
+    font-size:14px; cursor:pointer; line-height:1; padding:4px 8px; font-family:inherit;
   }
+  .meal .del { color:var(--red); border-color:transparent; }
+  .meal .mv:active { background:var(--amber); color:var(--bg); }
+  .section-h { font-family:var(--serif); font-size:15.5px; margin:18px 0 8px; }
+  .burn-tag { font-family:var(--mono); font-size:10.5px; color:var(--amber); margin:-4px 0 4px; }
+  .avg-bubble {
+    background:var(--panel-hi); border:1px solid var(--amber-dim); border-radius:12px;
+    padding:13px 16px; margin:14px 0;
+  }
+  .avg-l { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.08em; }
+  .avg-v { font-family:var(--mono); font-size:26px; font-weight:700; color:var(--amber); margin:3px 0 2px; }
+  .avg-v span { font-size:13px; font-weight:400; color:var(--ink-dim); }
+  .avg-sub { font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); }
+  #notes-box { min-height:300px; font-family:var(--sans); font-size:14.5px; line-height:1.5; }
   .empty { color:var(--ink-dim); font-style:italic; padding:18px 4px; font-family:var(--serif); }
 
   .win-btns { display:flex; gap:6px; margin-bottom:14px; }
@@ -155,10 +170,12 @@
   <div class="tabs">
     <button class="tab active" data-tab="log">Log</button>
     <button class="tab" data-tab="trends">Trends</button>
+    <button class="tab" data-tab="notes">Notes</button>
     <button class="tab" data-tab="data">Data</button>
   </div>
   <div id="view-log"></div>
   <div id="view-trends" style="display:none"></div>
+  <div id="view-notes" style="display:none"></div>
   <div id="view-data" style="display:none"></div>
 </div>
 
@@ -184,6 +201,7 @@ const DEFAULT_GOAL = 1900;
 const LS_DIARY = "ledger-diary-v1";
 const LS_KEY   = "ledger-api-key";
 const LS_GOAL  = "ledger-goal";
+const LS_NOTES = "ledger-notes";
 
 /* No personal data ships in this file — every device starts blank
    and keeps its own private log in that browser's storage. */
@@ -231,6 +249,25 @@ function ensureDay(d) {
 function dayTotal(d) { return (diary[d] ? diary[d].meals : []).reduce((s,m)=>s+(m.kcal||0),0); }
 function dayBurn(d) { return ((diary[d] && diary[d].exercise) ? diary[d].exercise : []).reduce((s,m)=>s+(m.kcal||0),0); }
 function dayNet(d) { return dayTotal(d) - dayBurn(d); }
+
+/* Days that actually have something logged — empty days don't drag the average. */
+function loggedDates() {
+  return Object.keys(diary).filter(d => {
+    const e = diary[d];
+    return e && ((e.meals && e.meals.length) || (e.exercise && e.exercise.length));
+  }).sort();
+}
+function averages(dates) {
+  const withMeals = dates.filter(d => diary[d] && diary[d].meals && diary[d].meals.length);
+  if (!withMeals.length) return null;
+  const sum = (fn) => withMeals.reduce((s,d)=>s+fn(d),0);
+  return {
+    days: withMeals.length,
+    consumed: Math.round(sum(dayTotal) / withMeals.length),
+    burned: Math.round(sum(dayBurn) / withMeals.length),
+    net: Math.round(sum(dayNet) / withMeals.length),
+  };
+}
 function fmtDay(iso) { return new Date(iso+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"}); }
 function fmtShort(iso) { return new Date(iso+"T12:00:00").toLocaleDateString("en-US",{month:"numeric",day:"numeric"}); }
 function fmtTime(d) { return d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); }
@@ -241,7 +278,33 @@ function render() {
   renderRail();
   if (currentTab === "log") renderLog();
   if (currentTab === "trends") renderTrends();
+  if (currentTab === "notes") renderNotes();
   if (currentTab === "data") renderData();
+}
+
+/* ---------------- notes ---------------- */
+let notesTimer = null;
+function renderNotes() {
+  const v = document.getElementById("view-notes");
+  if (document.getElementById("notes-box")) return; // keep cursor position on re-render
+  v.innerHTML =
+    '<div class="panel-box"><div class="t">Notes & ideas</div>' +
+    '<textarea id="notes-box" placeholder="Meal ideas, app tweaks, anything worth remembering…"></textarea>' +
+    '<div class="hint" id="notes-status">Saves automatically as you type.</div></div>';
+  const box = document.getElementById("notes-box");
+  box.value = localStorage.getItem(LS_NOTES) || "";
+  box.addEventListener("input", () => {
+    clearTimeout(notesTimer);
+    notesTimer = setTimeout(() => {
+      try {
+        localStorage.setItem(LS_NOTES, box.value);
+        document.getElementById("notes-status").textContent =
+          "Saved at " + fmtTime(new Date()) + ".";
+      } catch(e) {
+        document.getElementById("notes-status").textContent = "SAVE FAILED: " + e.message;
+      }
+    }, 600);
+  });
 }
 
 function renderRail() {
@@ -249,7 +312,8 @@ function renderRail() {
   const dates = Object.keys(diary).sort();
   rail.innerHTML = "";
   dates.forEach(d => {
-    const total = dayNet(d);
+    const total = dayTotal(d);
+    const burn = dayBurn(d);
     const over = total > getGoal();
     const pct = Math.min(total/getGoal(),1)*100;
     const btn = document.createElement("button");
@@ -257,6 +321,7 @@ function renderRail() {
     btn.innerHTML =
       '<div class="d">'+fmtShort(d)+'</div>' +
       '<div class="k">'+total.toLocaleString()+'</div>' +
+      (burn ? '<div class="burn-tag">−'+burn.toLocaleString()+'</div>' : '') +
       '<div class="bar"><div style="width:'+pct+'%;background:var(--'+(over?"red":"green")+')"></div></div>';
     btn.onclick = () => { selected = d; if (currentTab!=="log") switchTab("log"); render(); };
     rail.appendChild(btn);
@@ -265,17 +330,26 @@ function renderRail() {
   if (last && selected === dates[dates.length-1]) last.scrollIntoView({inline:"end"});
 }
 
+/* Row controls: ‹ shifts the item to the previous day, › to the next, × deletes. */
+function rowCtrls(kind, i) {
+  return '<div class="ctrls">' +
+    '<button class="mv" title="Move to previous day" onclick="moveItem(\''+kind+'\','+i+',-1)">‹</button>' +
+    '<button class="mv" title="Move to next day" onclick="moveItem(\''+kind+'\','+i+',1)">›</button>' +
+    '<button class="del" title="Remove" onclick="'+(kind==="meal"?"removeMeal":"removeExercise")+'(\''+selected+'\','+i+')">×</button>' +
+  '</div>';
+}
+
 function renderLog() {
   const v = document.getElementById("view-log");
   const entry = diary[selected] || { meals: [], exercise: [] };
   const exercise = entry.exercise || [];
-  const eaten = dayTotal(selected);
+  const consumed = dayTotal(selected);
   const burned = dayBurn(selected);
-  const net = eaten - burned;
-  const remaining = getGoal() - net;
+  const net = consumed - burned;
+  const remaining = getGoal() - consumed;   // exercise does NOT buy back food
   const over = remaining < 0;
-  const pct = Math.min(Math.max(net,0)/getGoal(),1)*100;
-  const overflowPct = over ? Math.min(((net-getGoal())/getGoal())*100,100) : 0;
+  const pct = Math.min(consumed/getGoal(),1)*100;
+  const overflowPct = over ? Math.min(((consumed-getGoal())/getGoal())*100,100) : 0;
 
   let mealsHtml;
   if (!entry.meals || !entry.meals.length) {
@@ -284,34 +358,46 @@ function renderLog() {
     mealsHtml = '<div class="meals">' + entry.meals.map((m,i) =>
       '<div class="meal"><div><div class="n">'+esc(m.name)+'</div>' +
       (m.note ? '<div class="note">'+esc(m.note)+'</div>' : '') +
-      '</div><div style="display:flex;align-items:flex-start"><span class="k">'+m.kcal.toLocaleString()+'</span>' +
-      '<button class="del" title="Remove" onclick="removeMeal(\''+selected+'\','+i+')">×</button></div></div>'
+      '</div><div class="right"><span class="k">'+m.kcal.toLocaleString()+'</span>' +
+      rowCtrls("meal", i) + '</div></div>'
     ).join("") + '</div>';
   }
 
   let exHtml = "";
   if (exercise.length) {
-    exHtml = '<div style="font-family:var(--serif);font-size:15.5px;margin:18px 0 8px">Exercise</div>' +
+    exHtml = '<div class="section-h">Exercise</div>' +
       '<div class="meals">' + exercise.map((m,i) =>
       '<div class="meal"><div><div class="n">'+esc(m.name)+'</div>' +
       (m.note ? '<div class="note">'+esc(m.note)+'</div>' : '') +
-      '</div><div style="display:flex;align-items:flex-start"><span class="k" style="color:var(--green)">−'+m.kcal.toLocaleString()+'</span>' +
-      '<button class="del" title="Remove" onclick="removeExercise(\''+selected+'\','+i+')">×</button></div></div>'
+      '</div><div class="right"><span class="k" style="color:var(--green)">−'+m.kcal.toLocaleString()+'</span>' +
+      rowCtrls("exercise", i) + '</div></div>'
     ).join("") + '</div>';
   }
 
+  const avgAll = averages(loggedDates());
+  const avgHtml = avgAll
+    ? '<div class="avg-bubble"><div class="avg-l">Average consumed · '+avgAll.days+' logged day'+(avgAll.days===1?"":"s")+'</div>' +
+      '<div class="avg-v">'+avgAll.consumed.toLocaleString()+' <span>kcal/day</span></div>' +
+      '<div class="avg-sub">net '+avgAll.net.toLocaleString()+' after '+avgAll.burned.toLocaleString()+' avg burned · goal '+getGoal().toLocaleString()+'</div></div>'
+    : "";
+
   v.innerHTML =
     '<div class="day-head"><span class="day-title">'+fmtDay(selected)+'</span>' +
-    '<span class="day-frac">'+net.toLocaleString()+' net / '+getGoal().toLocaleString()+' kcal</span></div>' +
+    '<span class="day-frac">'+consumed.toLocaleString()+' / '+getGoal().toLocaleString()+' kcal</span></div>' +
     '<div class="progress"><div style="width:'+(over?100:pct)+'%;background:var(--'+(over?"amber-dim":"green")+')"></div></div>' +
     (over ? '<div class="overflow-bar"><div style="width:'+overflowPct+'%"></div></div>' : '') +
     '<div class="chips">' +
-      chip("Eaten", eaten.toLocaleString()) +
+      chip("Consumed", consumed.toLocaleString()) +
       chip("Burned", burned ? "−"+burned.toLocaleString() : "0", burned ? "var(--green)" : undefined) +
-      chip(over?"Over by":"Available", Math.abs(remaining).toLocaleString(), over?"var(--red)":"var(--green)") +
+      chip("Net", net.toLocaleString(), "var(--amber)") +
+      chip(over?"Over by":"Remaining", Math.abs(remaining).toLocaleString(), over?"var(--red)":"var(--green)") +
       chip("Weight", entry.weightKg!=null ? entry.weightKg+" kg" : "—") +
       chip("Body fat", entry.bodyFatPct!=null ? entry.bodyFatPct+"%" : "—") +
-    '</div>' + mealsHtml + exHtml;
+    '</div>' + avgHtml + mealsHtml + exHtml +
+    '<div class="btn-row" style="margin-top:22px">' +
+      '<button class="btn danger" onclick="deleteDay(this)">Delete this whole day</button>' +
+    '</div>' +
+    '<div class="hint">Deleting a day removes it from your averages and charts entirely — use it for days you didn\u2019t log fully.</div>';
 }
 function chip(l,v,tone) {
   return '<div class="chip"><div class="l">'+l+'</div><div class="v" style="color:'+(tone||"var(--ink)")+'">'+v+'</div></div>';
@@ -332,6 +418,47 @@ function removeExercise(date, i) {
   render();
 }
 
+/* Shift an ISO date by n days. */
+function shiftDate(iso, n) {
+  const d = new Date(iso + "T12:00:00");
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
+}
+
+/* Move a meal or exercise item to the previous/next day. */
+function moveItem(kind, i, delta) {
+  const list = kind === "meal" ? diary[selected].meals : diary[selected].exercise;
+  const item = list[i];
+  if (!item) return;
+  const target = shiftDate(selected, delta);
+  const dest = ensureDay(target);
+  list.splice(i, 1);
+  (kind === "meal" ? dest.meals : dest.exercise).push(item);
+  try {
+    saveDiary();
+    showToast(null, {ok:true, text:'"'+item.name+'" moved to '+fmtDay(target)+'.'});
+  } catch(e) {
+    showToast(null, {ok:false, text:"Moved on screen but SAVE FAILED: "+e.message});
+  }
+  render();
+}
+
+/* Delete an entire day so it stops counting in charts and averages. */
+function deleteDay(btn) {
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "Tap again to delete " + fmtDay(selected);
+    return;
+  }
+  delete diary[selected];
+  const dates = Object.keys(diary).sort();
+  selected = dates.length ? (dates.includes(todayISO()) ? todayISO() : dates[dates.length-1]) : todayISO();
+  if (!dates.length) ensureDay(selected);
+  try { saveDiary(); showToast(null, {ok:true, text:"Day deleted."}); }
+  catch(e) { showToast(null, {ok:false, text:"Deleted on screen but SAVE FAILED: "+e.message}); }
+  render();
+}
+
 /* ---------------- trends ---------------- */
 function renderTrends() {
   const v = document.getElementById("view-trends");
@@ -339,14 +466,24 @@ function renderTrends() {
   v.innerHTML =
     '<div class="win-btns">' + [7,30,90].map(w =>
       '<button class="win'+(trendWin===w?" active":"")+'" onclick="setWin('+w+')">'+w+'d</button>').join("") + '</div>' +
+    '<div id="avg-slot"></div>' +
     '<div class="chart-box"><div class="t">Calories vs. goal</div><canvas id="ch-kcal"></canvas></div>' +
     '<div class="chart-box"><div class="t">Weight (kg)</div><div id="ch-weight-wrap"><canvas id="ch-weight"></canvas></div></div>' +
     '<div class="chart-box"><div class="t">Body fat (%)</div><div id="ch-bf-wrap"><canvas id="ch-bf"></canvas></div></div>';
 
   const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-trendWin);
-  const rows = Object.keys(diary).sort()
-    .filter(d => new Date(d+"T12:00:00") >= cutoff)
-    .map(d => ({ day: fmtShort(d), kcal: dayNet(d), weight: diary[d].weightKg, bf: diary[d].bodyFatPct }));
+  const winDates = Object.keys(diary).sort().filter(d => new Date(d+"T12:00:00") >= cutoff);
+  const rows = winDates
+    .map(d => ({ day: fmtShort(d), kcal: dayTotal(d), burn: dayBurn(d), net: dayNet(d),
+                 weight: diary[d].weightKg, bf: diary[d].bodyFatPct }));
+
+  const avg = averages(winDates);
+  const avgCard = avg
+    ? '<div class="avg-bubble"><div class="avg-l">'+trendWin+'-day average · '+avg.days+' logged day'+(avg.days===1?"":"s")+'</div>' +
+      '<div class="avg-v">'+avg.consumed.toLocaleString()+' <span>kcal/day consumed</span></div>' +
+      '<div class="avg-sub">net '+avg.net.toLocaleString()+' · '+avg.burned.toLocaleString()+' avg burned · goal '+getGoal().toLocaleString()+'</div></div>'
+    : '<div class="avg-bubble"><div class="avg-sub">No logged days in this window yet.</div></div>';
+  document.getElementById("avg-slot").innerHTML = avgCard;
 
   const css = getComputedStyle(document.documentElement);
   const C = n => css.getPropertyValue(n).trim();
@@ -356,10 +493,25 @@ function renderTrends() {
   charts.push(new Chart(document.getElementById("ch-kcal"), {
     type: "bar",
     data: { labels: rows.map(r=>r.day), datasets: [
-      { data: rows.map(r=>r.kcal), backgroundColor: rows.map(r=>r.kcal>getGoal()?C("--red"):C("--green")), borderRadius: 5 },
-      { type:"line", data: rows.map(()=>getGoal()), borderColor: C("--amber"), borderDash:[5,4], pointRadius:0, borderWidth:1.5 },
+      { label: "Consumed", data: rows.map(r=>r.kcal),
+        backgroundColor: rows.map(r=>r.kcal>getGoal()?C("--red"):C("--green")), borderRadius: 3, stack: "s" },
+      { label: "Burned", data: rows.map(r=>r.burn),
+        backgroundColor: C("--amber-dim"), borderRadius: 3, stack: "s" },
+      { type:"line", label:"Goal", data: rows.map(()=>getGoal()), borderColor: C("--amber"),
+        borderDash:[5,4], pointRadius:0, borderWidth:1.5 },
     ]},
-    options: { plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false},ticks:tickOpts}, y:{grid:gridOpts,ticks:tickOpts} } }
+    options: {
+      plugins: {
+        legend: { display: true, labels: { color: C("--ink-dim"), boxWidth: 10, font: { size: 10 },
+          filter: it => it.text !== "Goal" } },
+        tooltip: { callbacks: { afterBody: items => {
+          const r = rows[items[0].dataIndex];
+          return r.burn ? "Net: " + r.net.toLocaleString() + " kcal" : "";
+        }}},
+      },
+      scales: { x:{stacked:true, grid:{display:false}, ticks:tickOpts},
+                y:{stacked:true, grid:gridOpts, ticks:tickOpts} }
+    }
   }));
 
   lineChart("ch-weight","ch-weight-wrap", rows.filter(r=>r.weight!=null), "weight", C("--amber"), tickOpts, gridOpts, "No weigh-ins in this window yet.");
@@ -458,7 +610,7 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dat
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===name));
-  ["log","trends","data"].forEach(n => document.getElementById("view-"+n).style.display = n===name ? "" : "none");
+  ["log","trends","notes","data"].forEach(n => document.getElementById("view-"+n).style.display = n===name ? "" : "none");
   render();
 }
 
@@ -553,7 +705,7 @@ async function submitEntry(text) {
 function applyUpdates(updates) {
   let touched = false;
   for (const u of updates) {
-    const date = u.date || todayISO();
+    const date = u.date || selected || todayISO();
     const entry = ensureDay(date);
     if (Array.isArray(u.removeIndexes) && u.removeIndexes.length) {
       const drop = new Set(u.removeIndexes);
@@ -589,19 +741,20 @@ function applyUpdates(updates) {
 function parseOffline(text) {
   const t = text.trim();
   let m = t.match(/^weight\s+([\d.]+)/i);
-  if (m) return { updates:[{date:todayISO(), weightKg:parseFloat(m[1])}], reply:"Weight logged: "+m[1]+" kg." };
+  if (m) return { updates:[{date:selected, weightKg:parseFloat(m[1])}], reply:"Weight logged: "+m[1]+" kg." };
   m = t.match(/^(?:bf|body\s*fat)\s+([\d.]+)/i);
-  if (m) return { updates:[{date:todayISO(), bodyFatPct:parseFloat(m[1])}], reply:"Body fat logged: "+m[1]+"%." };
+  if (m) return { updates:[{date:selected, bodyFatPct:parseFloat(m[1])}], reply:"Body fat logged: "+m[1]+"%." };
   m = t.match(/^(.+?)\s*=\s*-\s*(\d+)\s*$/);
-  if (m) return { updates:[{date:todayISO(), addExercise:[{name:m[1].trim(), kcal:parseInt(m[2],10)}]}], reply:"Exercise logged: "+m[1].trim()+" — "+m[2]+" kcal burned." };
+  if (m) return { updates:[{date:selected, addExercise:[{name:m[1].trim(), kcal:parseInt(m[2],10)}]}], reply:"Exercise logged: "+m[1].trim()+" — "+m[2]+" kcal burned." };
   m = t.match(/^(.+?)\s*=\s*(\d+)\s*$/);
-  if (m) return { updates:[{date:todayISO(), addMeals:[{name:m[1].trim(), kcal:parseInt(m[2],10)}]}], reply:"Logged "+m[1].trim()+" — "+m[2]+" kcal." };
+  if (m) return { updates:[{date:selected, addMeals:[{name:m[1].trim(), kcal:parseInt(m[2],10)}]}], reply:"Logged "+m[1].trim()+" — "+m[2]+" kcal." };
   return { updates: [], reply: "No API key set, so I can only parse: food name = 350, exercise name = -300, weight 72.5, or bf 18. Add a key in the Data tab for natural-language logging." };
 }
 
 async function parseWithClaude(userText, apiKey) {
   const prompt = `You are the meal-logging parser inside a calorie-tracking app called The Daily Ledger.
 Today's date is ${todayISO()}.
+The user is currently viewing ${selected}. Log every entry to ${selected} unless the message explicitly names a different day (e.g. "yesterday", "on Monday", a specific date) — in that case resolve it against today's date.
 
 Current diary (JSON). Meal indexes are the array positions shown:
 ${JSON.stringify(diary, null, 1)}
