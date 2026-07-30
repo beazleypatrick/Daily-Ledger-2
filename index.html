@@ -23,18 +23,28 @@
     margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
     padding:calc(14px + env(safe-area-inset-top)) 14px calc(170px + env(safe-area-inset-bottom));
   }
-  .wrap { max-width:640px; margin:0 auto; }
+  .wrap { max-width:960px; margin:0 auto; }
   header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
   h1 { font-family:var(--serif); font-size:24px; font-weight:600; margin:0; letter-spacing:.01em; }
   .goal-tag { font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); }
 
-  .rail { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 10px; scrollbar-width:none; }
+  .rail-wrap { display:flex; align-items:stretch; gap:6px; }
+  .rail { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 10px; scrollbar-width:none; flex:1; scroll-behavior:smooth; }
   .rail::-webkit-scrollbar { display:none; }
+  .rail-arrow, .rail-add {
+    flex:0 0 auto; align-self:center; width:34px; height:60px; border-radius:10px;
+    background:var(--panel); border:1px solid var(--line); color:var(--ink-dim);
+    font-size:18px; cursor:pointer; font-family:inherit;
+  }
+  .rail-arrow:active, .rail-add:active { background:var(--amber); color:var(--bg); }
+  .rail-add { font-size:22px; color:var(--amber); border-color:var(--amber-dim); }
   .day-card {
     flex:0 0 auto; width:76px; padding:10px 8px 8px; background:var(--panel);
     border:1px solid var(--line); border-radius:10px; cursor:pointer; text-align:left;
     color:inherit; font-family:inherit;
   }
+  .day-card.future { border-style:dashed; opacity:.85; }
+  .day-card.future .d { color:var(--amber); }
   .day-card.active { background:var(--panel-hi); border-color:var(--amber); }
   .day-card .d { font-family:var(--mono); font-size:11px; color:var(--ink-dim); letter-spacing:.04em; }
   .day-card.active .d { color:var(--amber); }
@@ -42,7 +52,9 @@
   .day-card .bar { height:4px; background:var(--line); border-radius:2px; overflow:hidden; }
   .day-card .bar>div { height:100%; }
 
-  .tabs { display:flex; gap:6px; margin:12px 0 16px; }
+  .tabs { display:flex; gap:6px; margin:12px 0 16px; overflow-x:auto; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tab { white-space:nowrap; }
   .tab {
     padding:7px 20px; border-radius:9px; cursor:pointer; font-size:13.5px; font-weight:600;
     background:transparent; color:var(--ink-dim); border:1px solid var(--line); font-family:inherit;
@@ -80,6 +92,25 @@
   .meal .mv:active { background:var(--amber); color:var(--bg); }
   .section-h { font-family:var(--serif); font-size:15.5px; margin:18px 0 8px; }
   .burn-tag { font-family:var(--mono); font-size:10.5px; color:var(--amber); margin:-4px 0 4px; }
+  .qa-wrap { margin:4px 0 16px; display:flex; flex-direction:column; gap:6px; }
+  .qa-row { display:flex; flex-wrap:wrap; gap:6px; }
+  .qa {
+    display:inline-flex; align-items:center; gap:5px; padding:6px 10px; border-radius:16px;
+    background:var(--panel); border:1px solid var(--line); color:var(--ink); font-size:12.5px;
+    cursor:pointer; font-family:inherit;
+  }
+  .qa span { font-family:var(--mono); font-size:11px; color:var(--ink-dim); }
+  .qa.pin { border-color:var(--amber-dim); }
+  .qa .qa-x { color:var(--red); font-size:13px; padding-left:2px; }
+  .qa .qa-pin { color:var(--amber); font-size:10.5px; }
+  .qa:active { background:var(--amber); color:var(--bg); }
+  .chat-scroll { max-height:52vh; overflow-y:auto; padding:14px; display:flex; flex-direction:column; gap:8px; }
+  .cmsg { padding:9px 13px; border-radius:12px; font-size:14px; line-height:1.45; max-width:85%; white-space:pre-wrap; }
+  .cmsg.user { align-self:flex-end; background:var(--amber-dim); color:var(--ink); }
+  .cmsg.assistant { align-self:flex-start; background:var(--panel-hi); border:1px solid var(--line); }
+  #chat-q { flex:1; padding:12px 16px; border-radius:12px; background:var(--panel); border:1px solid var(--line); color:var(--ink); font-size:16px; outline:none; font-family:var(--sans); }
+  #chat-q-send { padding:0 20px; border-radius:12px; cursor:pointer; background:var(--amber); color:var(--bg); border:1px solid var(--amber); font-weight:700; }
+  #chat-q-send:disabled { background:var(--panel); color:var(--ink-dim); border-color:var(--line); }
   .avg-bubble {
     background:var(--panel-hi); border:1px solid var(--amber-dim); border-radius:12px;
     padding:13px 16px; margin:14px 0;
@@ -132,7 +163,7 @@
     position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom));
     background:linear-gradient(transparent, var(--bg) 22%);
   }
-  .chatbar .inner { max-width:640px; margin:0 auto; }
+  .chatbar .inner { max-width:960px; margin:0 auto; }
   .toast {
     background:var(--panel-hi); border:1px solid var(--line); border-radius:10px;
     padding:10px 14px; margin-bottom:8px; font-size:13px; line-height:1.45; display:none;
@@ -166,15 +197,22 @@
     <h1>The Daily Ledger</h1>
     <span class="goal-tag">goal <span id="goal-label"></span> kcal</span>
   </header>
-  <div class="rail" id="rail"></div>
+  <div class="rail-wrap">
+    <button class="rail-arrow" onclick="scrollRail(-1)" title="Scroll left">‹</button>
+    <div class="rail" id="rail"></div>
+    <button class="rail-arrow" onclick="scrollRail(1)" title="Scroll right">›</button>
+    <button class="rail-add" onclick="addFutureDay()" title="Add a day">+</button>
+  </div>
   <div class="tabs">
     <button class="tab active" data-tab="log">Log</button>
     <button class="tab" data-tab="trends">Trends</button>
+    <button class="tab" data-tab="chat">Chat</button>
     <button class="tab" data-tab="notes">Notes</button>
     <button class="tab" data-tab="data">Data</button>
   </div>
   <div id="view-log"></div>
   <div id="view-trends" style="display:none"></div>
+  <div id="view-chat" style="display:none"></div>
   <div id="view-notes" style="display:none"></div>
   <div id="view-data" style="display:none"></div>
 </div>
@@ -202,6 +240,8 @@ const LS_DIARY = "ledger-diary-v1";
 const LS_KEY   = "ledger-api-key";
 const LS_GOAL  = "ledger-goal";
 const LS_NOTES = "ledger-notes";
+const LS_PINS  = "ledger-pins";
+const LS_CHAT  = "ledger-chat";
 
 /* No personal data ships in this file — every device starts blank
    and keeps its own private log in that browser's storage. */
@@ -278,8 +318,159 @@ function render() {
   renderRail();
   if (currentTab === "log") renderLog();
   if (currentTab === "trends") renderTrends();
+  if (currentTab === "chat") renderChat();
   if (currentTab === "notes") renderNotes();
   if (currentTab === "data") renderData();
+}
+
+/* ===== Quick Adds: auto-learned frequents + user pins ===== */
+function getPins() {
+  try { return JSON.parse(localStorage.getItem(LS_PINS)) || []; } catch(e) { return []; }
+}
+function savePins(pins) { localStorage.setItem(LS_PINS, JSON.stringify(pins)); }
+
+/* Tally every meal ever logged; the most frequent become suggestions. */
+function frequentItems(limit) {
+  const counts = {};
+  Object.values(diary).forEach(day => (day.meals||[]).forEach(m => {
+    const key = m.name.trim();
+    if (!counts[key]) counts[key] = { name: key, kcal: m.kcal, n: 0, note: m.note };
+    counts[key].n++;
+    counts[key].kcal = m.kcal; // keep most recent kcal
+  }));
+  const pinNames = new Set(getPins().map(p => p.name));
+  return Object.values(counts)
+    .filter(c => c.n >= 2 && !pinNames.has(c.name)) // seen at least twice, not already pinned
+    .sort((a,b) => b.n - a.n)
+    .slice(0, limit || 6);
+}
+
+function quickAddBar() {
+  const pins = getPins();
+  const freq = frequentItems(6);
+  if (!pins.length && !freq.length) return "";
+  let html = '<div class="qa-wrap">';
+  if (pins.length) {
+    html += '<div class="qa-row">' + pins.map((p,i) =>
+      '<button class="qa pin" onclick="quickAdd('+i+',true)">'+esc(p.name.length>22?p.name.slice(0,20)+"…":p.name)+
+      ' <span>'+p.kcal+'</span><span class="qa-x" onclick="event.stopPropagation();unpin('+i+')">×</span></button>'
+    ).join("") + '</div>';
+  }
+  if (freq.length) {
+    html += '<div class="qa-row">' + freq.map((f) =>
+      '<button class="qa" onclick=\'quickAddFreq('+JSON.stringify(JSON.stringify(f))+')\'>'+
+      esc(f.name.length>22?f.name.slice(0,20)+"…":f.name)+' <span>'+f.kcal+'</span>'+
+      '<span class="qa-pin" onclick=\'event.stopPropagation();pinItem('+JSON.stringify(JSON.stringify(f))+')\'>+pin</span></button>'
+    ).join("") + '</div>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function quickAdd(i, isPin) {
+  const item = getPins()[i];
+  if (!item) return;
+  addQuickMeal(item);
+}
+function quickAddFreq(json) {
+  addQuickMeal(JSON.parse(json));
+}
+function addQuickMeal(item) {
+  const entry = ensureDay(selected);
+  const meal = { name: item.name, kcal: item.kcal };
+  if (item.note) meal.note = item.note;
+  entry.meals.push(meal);
+  try { saveDiary(); showToast(null, {ok:true, text:'Added "'+item.name+'" ('+item.kcal+' kcal) to '+fmtDay(selected)+'.'}); }
+  catch(e) { showToast(null, {ok:false, text:"Added on screen but SAVE FAILED: "+e.message}); }
+  render();
+}
+function pinItem(json) {
+  const item = JSON.parse(json);
+  const pins = getPins();
+  if (pins.some(p => p.name === item.name)) return;
+  pins.push({ name: item.name, kcal: item.kcal, note: item.note });
+  savePins(pins);
+  showToast(null, {ok:true, text:'Pinned "'+item.name+'" to Quick Adds.'});
+  render();
+}
+function unpin(i) {
+  const pins = getPins();
+  pins.splice(i,1);
+  savePins(pins);
+  render();
+}
+
+/* ---------------- chat (general Q&A, not logged) ---------------- */
+function getChatHist() {
+  try { return JSON.parse(localStorage.getItem(LS_CHAT)) || []; } catch(e) { return []; }
+}
+function saveChatHist(h) {
+  try { localStorage.setItem(LS_CHAT, JSON.stringify(h.slice(-40))); } catch(e) {}
+}
+function renderChat() {
+  const v = document.getElementById("view-chat");
+  const hist = getChatHist();
+  const key = localStorage.getItem(LS_KEY);
+  let body = hist.length
+    ? hist.map(m => '<div class="cmsg '+m.role+'">'+esc(m.text)+'</div>').join("")
+    : '<div class="empty">Ask anything — nutrition questions, ideas, whatever. Nothing here is logged as calories.</div>';
+  v.innerHTML =
+    '<div class="panel-box" style="padding:0"><div id="chat-scroll" class="chat-scroll">'+body+'</div></div>' +
+    (key ? '' : '<div class="hint">Add your API key in the Data tab to use chat. It shares your food log for context but never changes it.</div>') +
+    '<div class="row" style="margin-top:10px">' +
+    '<input id="chat-q" placeholder="Ask a question…" '+(key?'':'disabled')+' autocomplete="off">' +
+    '<button id="chat-q-send" onclick="sendChat()" '+(key?'':'disabled')+'>Ask</button>' +
+    (hist.length ? '<button class="btn" onclick="clearChat()">Clear</button>' : '') +
+    '</div>';
+  const inp = document.getElementById("chat-q");
+  if (inp) inp.addEventListener("keydown", e => { if (e.key==="Enter") sendChat(); });
+  const sc = document.getElementById("chat-scroll");
+  if (sc) sc.scrollTop = sc.scrollHeight;
+}
+function clearChat() { localStorage.removeItem(LS_CHAT); renderChat(); }
+
+async function sendChat() {
+  const inp = document.getElementById("chat-q");
+  const q = inp.value.trim();
+  const key = localStorage.getItem(LS_KEY);
+  if (!q || !key) return;
+  const hist = getChatHist();
+  hist.push({ role: "user", text: q });
+  saveChatHist(hist);
+  inp.value = "";
+  renderChat();
+  const sendBtn = document.getElementById("chat-q-send");
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "…"; }
+  try {
+    const msgs = hist.slice(-10).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: "You are a helpful nutrition and wellness assistant inside a calorie-tracking app. Answer concisely. This is a general Q&A space — do NOT try to log food; just answer questions and offer ideas.",
+        messages: msgs,
+      }),
+    });
+    if (!res.ok) throw new Error("API error " + res.status);
+    const data = await res.json();
+    const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+    const h2 = getChatHist();
+    h2.push({ role: "assistant", text: text || "(no response)" });
+    saveChatHist(h2);
+  } catch(e) {
+    const h2 = getChatHist();
+    h2.push({ role: "assistant", text: "Error: " + e.message });
+    saveChatHist(h2);
+  } finally {
+    renderChat();
+  }
 }
 
 /* ---------------- notes ---------------- */
@@ -307,27 +498,57 @@ function renderNotes() {
   });
 }
 
+function railDates() {
+  /* Every logged day, plus today and whatever is selected, so the rail is
+     never empty and future days you add stay visible. */
+  const set = new Set(Object.keys(diary));
+  set.add(todayISO());
+  if (selected) set.add(selected);
+  return Array.from(set).sort();
+}
+
 function renderRail() {
   const rail = document.getElementById("rail");
-  const dates = Object.keys(diary).sort();
+  const dates = railDates();
   rail.innerHTML = "";
   dates.forEach(d => {
     const total = dayTotal(d);
     const burn = dayBurn(d);
     const over = total > getGoal();
     const pct = Math.min(total/getGoal(),1)*100;
+    const future = d > todayISO();
     const btn = document.createElement("button");
-    btn.className = "day-card" + (d===selected ? " active" : "");
+    btn.className = "day-card" + (d===selected ? " active" : "") + (future ? " future" : "");
     btn.innerHTML =
-      '<div class="d">'+fmtShort(d)+'</div>' +
+      '<div class="d">'+fmtShort(d)+(future?" ›":"")+'</div>' +
       '<div class="k">'+total.toLocaleString()+'</div>' +
       (burn ? '<div class="burn-tag">−'+burn.toLocaleString()+'</div>' : '') +
       '<div class="bar"><div style="width:'+pct+'%;background:var(--'+(over?"red":"green")+')"></div></div>';
     btn.onclick = () => { selected = d; if (currentTab!=="log") switchTab("log"); render(); };
+    if (d === selected) btn.dataset.active = "1";
     rail.appendChild(btn);
   });
-  const last = rail.lastElementChild;
-  if (last && selected === dates[dates.length-1]) last.scrollIntoView({inline:"end"});
+  const activeCard = rail.querySelector('[data-active="1"]');
+  if (activeCard) activeCard.scrollIntoView({inline:"center", block:"nearest"});
+}
+
+function scrollRail(dir) {
+  const rail = document.getElementById("rail");
+  rail.scrollBy({ left: dir * 180, behavior: "smooth" });
+}
+
+/* Add the next un-logged day (usually tomorrow, or the day after the furthest
+   future day already present) and select it. */
+function addFutureDay() {
+  const dates = railDates();
+  let candidate = todayISO();
+  const furthest = dates[dates.length-1];
+  candidate = (furthest >= todayISO()) ? shiftDate(furthest, 1) : shiftDate(todayISO(), 1);
+  ensureDay(candidate);
+  selected = candidate;
+  try { saveDiary(); } catch(e) {}
+  if (currentTab !== "log") switchTab("log"); else render();
+  showToast(null, {ok:true, text:"Added "+fmtDay(candidate)+" — logging here now."});
 }
 
 /* Row controls: ‹ shifts the item to the previous day, › to the next, × deletes. */
@@ -393,7 +614,7 @@ function renderLog() {
       chip(over?"Over by":"Remaining", Math.abs(remaining).toLocaleString(), over?"var(--red)":"var(--green)") +
       chip("Weight", entry.weightKg!=null ? entry.weightKg+" kg" : "—") +
       chip("Body fat", entry.bodyFatPct!=null ? entry.bodyFatPct+"%" : "—") +
-    '</div>' + avgHtml + mealsHtml + exHtml +
+    '</div>' + avgHtml + quickAddBar() + mealsHtml + exHtml +
     '<div class="btn-row" style="margin-top:22px">' +
       '<button class="btn danger" onclick="deleteDay(this)">Delete this whole day</button>' +
     '</div>' +
@@ -464,14 +685,16 @@ function renderTrends() {
   const v = document.getElementById("view-trends");
   charts.forEach(c=>c.destroy()); charts = [];
   v.innerHTML =
-    '<div class="win-btns">' + [7,30,90].map(w =>
-      '<button class="win'+(trendWin===w?" active":"")+'" onclick="setWin('+w+')">'+w+'d</button>').join("") + '</div>' +
+    '<div class="win-btns">' + [[7,"7d"],[30,"30d"],[90,"90d"],[9999,"All"]].map(([w,lbl]) =>
+      '<button class="win'+(trendWin===w?" active":"")+'" onclick="setWin('+w+')">'+lbl+'</button>').join("") + '</div>' +
     '<div id="avg-slot"></div>' +
     '<div class="chart-box"><div class="t">Calories vs. goal</div><canvas id="ch-kcal"></canvas></div>' +
     '<div class="chart-box"><div class="t">Weight (kg)</div><div id="ch-weight-wrap"><canvas id="ch-weight"></canvas></div></div>' +
     '<div class="chart-box"><div class="t">Body fat (%)</div><div id="ch-bf-wrap"><canvas id="ch-bf"></canvas></div></div>';
 
-  const cutoff = new Date(); cutoff.setDate(cutoff.getDate()-trendWin);
+  const cutoff = new Date();
+  if (trendWin >= 9999) { cutoff.setFullYear(2000); } // effectively all-time
+  else { cutoff.setDate(cutoff.getDate()-trendWin); }
   const winDates = Object.keys(diary).sort().filter(d => new Date(d+"T12:00:00") >= cutoff);
   const rows = winDates
     .map(d => ({ day: fmtShort(d), kcal: dayTotal(d), burn: dayBurn(d), net: dayNet(d),
@@ -479,7 +702,7 @@ function renderTrends() {
 
   const avg = averages(winDates);
   const avgCard = avg
-    ? '<div class="avg-bubble"><div class="avg-l">'+trendWin+'-day average · '+avg.days+' logged day'+(avg.days===1?"":"s")+'</div>' +
+    ? '<div class="avg-bubble"><div class="avg-l">'+(trendWin>=9999?"All-time":trendWin+"-day")+' average · '+avg.days+' logged day'+(avg.days===1?"":"s")+'</div>' +
       '<div class="avg-v">'+avg.consumed.toLocaleString()+' <span>kcal/day consumed</span></div>' +
       '<div class="avg-sub">net '+avg.net.toLocaleString()+' · '+avg.burned.toLocaleString()+' avg burned · goal '+getGoal().toLocaleString()+'</div></div>'
     : '<div class="avg-bubble"><div class="avg-sub">No logged days in this window yet.</div></div>';
@@ -610,7 +833,7 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dat
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===name));
-  ["log","trends","notes","data"].forEach(n => document.getElementById("view-"+n).style.display = n===name ? "" : "none");
+  ["log","trends","chat","notes","data"].forEach(n => document.getElementById("view-"+n).style.display = n===name ? "" : "none");
   render();
 }
 
