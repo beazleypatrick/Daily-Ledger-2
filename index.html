@@ -398,93 +398,169 @@ async function ghFetch(url, opts) {
   return res.json();
 }
 
-/* Create a fresh private gist seeded with this device's data. */
-async function createGist() {
-  if (!ghToken()) { showToast(null,{ok:false,text:"Enter your GitHub token first."}); return; }
-  setSyncStatus("Creating private gist…");
-  try {
-    const body = {
-      description: "The Daily Ledger — private data sync (do not share)",
-      public: false,
-      files: { [GIST_FILE]: { content: JSON.stringify(buildSyncPayload(), null, 1) } },
-    };
-    const data = await ghFetch("https://api.github.com/gists", { method: "POST", body: JSON.stringify(body) });
-    localStorage.setItem(LS_GISTID, data.id);
-    localStorage.setItem(LS_SYNCAT, new Date().toISOString());
-    setSyncStatus("Sync set up. Gist ID: " + data.id, true);
-    renderData();
-    showToast(null,{ok:true,text:"Cloud sync created. Copy the Gist ID onto your other device."});
-  } catch(e) {
-    setSyncStatus(e.message, false);
+/* Find this app's sync gist on the account — removes any need to copy IDs
+   between devices. Both devices just need the same token. */
+async function findSyncGist() {
+  const list = await ghFetch("https://api.github.com/gists?per_page=100");
+  for (const g of list) {
+    if (g.files && g.files[GIST_FILE]) return g.id;
   }
+  return null;
 }
 
-/* Push local state up. */
-async function pushSync(silent) {
-  if (!syncConfigured()) { if(!silent) showToast(null,{ok:false,text:"Set up sync first."}); return false; }
-  try {
-    if (!silent) setSyncStatus("Uploading…");
-    const body = { files: { [GIST_FILE]: { content: JSON.stringify(buildSyncPayload(), null, 1) } } };
-    await ghFetch("https://api.github.com/gists/" + gistId(), { method: "PATCH", body: JSON.stringify(body) });
-    localStorage.setItem(LS_SYNCAT, new Date().toISOString());
-    if (!silent) { setSyncStatus("Uploaded at " + fmtTime(new Date()), true); renderData(); }
-    return true;
-  } catch(e) {
-    if (!silent) setSyncStatus(e.message, false);
-    else showToast(null,{ok:false,text:"Auto-sync failed: " + e.message});
+/* ===== Merge =====
+   Combines remote and local rather than overwriting, so it doesn't matter
+   which device syncs first. */
+function mergeDiaries(localD, remoteD) {
+  const out = {};
+  const dates = new Set([...Object.keys(localD||{}), ...Object.keys(remoteD||{})]);
+  dates.forEach(d => {
+    const L = localD && localD[d], R = remoteD && remoteD[d];
+    if (!L) { out[d] = R; return; }
+    if (!R) { out[d] = L; return; }
+    /* Both devices have this day. Keep the fuller record — the side with more
+       entries is the one that did the logging. Ties keep local. */
+    const lc = (L.meals||[]).length + (L.exercise||[]).length;
+    const rc = (R.meals||[]).length + (R.exercise||[]).length;
+    const win = rc > lc ? R : L;
+    out[d] = {
+      meals: win.meals || [],
+      exercise: win.exercise || [],
+      weightKg: L.weightKg != null ? L.weightKg : R.weightKg,
+      bodyFatPct: L.bodyFatPct != null ? L.bodyFatPct : R.bodyFatPct,
+    };
+  });
+  return out;
+}
+function mergeWorkouts(localW, remoteW) {
+  const out = {};
+  const names = new Set([...Object.keys(localW||{}), ...Object.keys(remoteW||{})]);
+  names.forEach(n => {
+    const seen = new Set();
+    const combined = [];
+    [...((localW||{})[n]||[]), ...((remoteW||{})[n]||[])].forEach(s => {
+      const sig = [s.date, s.weight, s.unit, s.reps, s.sets, s.done].join("|");
+      if (seen.has(sig)) return;
+      seen.add(sig);
+      combined.push(s);
+    });
+    combined.sort((a,b) => (a.date||"").localeCompare(b.date||""));
+    out[n] = combined;
+  });
+  return out;
+}
+function parseOr(str, fallback) {
+  try { return str ? JSON.parse(str) : fallback; } catch(e) { return fallback; }
+}
+
+/* Merge a remote payload into this device, then return the merged bundle. */
+function mergeIntoLocal(remote) {
+  const remoteAt = remote.updatedAt ? new Date(remote.updatedAt).getTime() : 0;
+  const localAt = localStorage.getItem(LS_SYNCAT) ? new Date(localStorage.getItem(LS_SYNCAT)).getTime() : 0;
+  const remoteNewer = remoteAt > localAt;
+
+  /* Diary and workouts merge item-by-item so nothing is lost either way. */
+  const mergedDiary = mergeDiaries(parseOr(localStorage.getItem(LS_DIARY), {}), parseOr(remote.diary, {}));
+  localStorage.setItem(LS_DIARY, JSON.stringify(mergedDiary));
+  const mergedW = mergeWorkouts(parseOr(localStorage.getItem(LS_WORKOUTS), {}), parseOr(remote.workouts, {}));
+  localStorage.setItem(LS_WORKOUTS, JSON.stringify(mergedW));
+
+  /* Single-value settings: newer side wins. */
+  [["goal",LS_GOAL],["units",LS_UNITS],["profile",LS_PROFILE],["bodymap",LS_BODYMAP],
+   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN]].forEach(([name,key]) => {
+    if (remoteNewer && typeof remote[name] === "string") localStorage.setItem(key, remote[name]);
+  });
+  /* Notes: keep the longer text rather than silently dropping writing. */
+  const localNotes = localStorage.getItem(LS_NOTES) || "";
+  const remoteNotes = typeof remote.notes === "string" ? remote.notes : "";
+  if (remoteNotes && remoteNotes !== localNotes) {
+    localStorage.setItem(LS_NOTES, remoteNotes.length >= localNotes.length ? remoteNotes : localNotes);
+  }
+
+  diary = loadDiary();
+  selected = pickDefaultDate();
+  return { days: Object.keys(mergedDiary).length };
+}
+
+/* ===== The one button =====
+   Ensures a gist exists (finding or creating it), merges both sides, uploads
+   the result. Safe to tap on either device, in any order. */
+let syncing = false;
+async function syncNow(silent) {
+  if (syncing) return false;
+  if (!ghToken()) {
+    setSyncStatus("Add your GitHub token first (one-time setup below).", false);
     return false;
   }
-}
-
-/* Pull remote state down, overwriting local. */
-async function pullSync(silent) {
-  if (!syncConfigured()) { if(!silent) showToast(null,{ok:false,text:"Set up sync first."}); return false; }
+  syncing = true;
+  const btn = document.getElementById("sync-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Syncing…"; }
   try {
-    if (!silent) setSyncStatus("Downloading…");
-    const data = await ghFetch("https://api.github.com/gists/" + gistId());
-    const f = data.files && data.files[GIST_FILE];
-    if (!f || !f.content) throw new Error("Sync file missing from that gist.");
-    const payload = JSON.parse(f.content);
-    applySyncPayload(payload);
+    /* 1. Locate the shared gist, or make one on first run. */
+    let id = gistId();
+    if (!id) {
+      setSyncStatus("Looking for your sync file…");
+      id = await findSyncGist();
+      if (!id) {
+        setSyncStatus("First device — creating your private sync file…");
+        const created = await ghFetch("https://api.github.com/gists", {
+          method: "POST",
+          body: JSON.stringify({
+            description: "The Daily Ledger — private data sync (do not share)",
+            public: false,
+            files: { [GIST_FILE]: { content: JSON.stringify(buildSyncPayload(), null, 1) } },
+          }),
+        });
+        id = created.id;
+      }
+      localStorage.setItem(LS_GISTID, id);
+    }
+
+    /* 2. Pull remote and merge into local. */
+    setSyncStatus("Merging…");
+    let mergedDays = Object.keys(diary).length;
+    try {
+      const data = await ghFetch("https://api.github.com/gists/" + id);
+      const f = data.files && data.files[GIST_FILE];
+      if (f && f.content) {
+        const remote = JSON.parse(f.content);
+        mergedDays = mergeIntoLocal(remote).days;
+      }
+    } catch(e) {
+      /* A missing gist just means we upload fresh below. */
+      if (!/404/.test(e.message)) throw e;
+    }
+
+    /* 3. Push the merged result back up. */
+    setSyncStatus("Uploading…");
+    await ghFetch("https://api.github.com/gists/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(buildSyncPayload(), null, 1) } } }),
+    });
+
     localStorage.setItem(LS_SYNCAT, new Date().toISOString());
     render();
-    if (!silent) { setSyncStatus("Downloaded at " + fmtTime(new Date()), true); renderData(); }
-    showToast(null,{ok:true,text:"Synced from cloud — " + Object.keys(diary).length + " days loaded."});
+    setSyncStatus("Synced at " + fmtTime(new Date()) + " — " + mergedDays + " days.", true);
+    if (!silent) showToast(null, {ok:true, text:"Synced — " + mergedDays + " days on both devices."});
     return true;
   } catch(e) {
-    if (!silent) setSyncStatus(e.message, false);
+    setSyncStatus(e.message, false);
+    if (!silent) showToast(null, {ok:false, text:"Sync failed: " + e.message});
     return false;
-  }
-}
-
-/* On startup: if the cloud copy is newer than this device's last sync,
-   pull it automatically so you always open to current data. */
-async function autoSyncOnLoad() {
-  if (!syncConfigured()) return;
-  try {
-    const data = await ghFetch("https://api.github.com/gists/" + gistId());
-    const f = data.files && data.files[GIST_FILE];
-    if (!f || !f.content) return;
-    const payload = JSON.parse(f.content);
-    const remoteAt = payload.updatedAt ? new Date(payload.updatedAt).getTime() : 0;
-    const localAt = localStorage.getItem(LS_SYNCAT) ? new Date(localStorage.getItem(LS_SYNCAT)).getTime() : 0;
-    if (remoteAt > localAt) {
-      applySyncPayload(payload);
-      localStorage.setItem(LS_SYNCAT, new Date().toISOString());
-      render();
-      showToast(null,{ok:true,text:"Loaded newer data from cloud sync."});
-    }
-  } catch(e) {
-    showToast(null,{ok:false,text:"Cloud sync check failed: " + e.message});
+  } finally {
+    syncing = false;
+    const b = document.getElementById("sync-btn");
+    if (b) { b.disabled = false; b.textContent = "⟳ Sync now"; }
+    renderData();
   }
 }
 
 /* Debounced auto-push whenever data changes. */
 let pushTimer = null;
 function queuePush() {
-  if (!syncConfigured()) return;
+  if (!ghToken()) return;
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => pushSync(true), 2500);
+  pushTimer = setTimeout(() => syncNow(true), 3000);
 }
 function setSyncStatus(msg, ok) {
   const el = document.getElementById("sync-status");
@@ -492,15 +568,16 @@ function setSyncStatus(msg, ok) {
 }
 function saveGhToken() {
   const t = document.getElementById("gh-token").value.trim();
-  if (t) localStorage.setItem(LS_GHTOKEN, t); else localStorage.removeItem(LS_GHTOKEN);
-  renderData();
-  showToast(null,{ok:true,text: t ? "GitHub token saved to this browser." : "Token cleared."});
-}
-function saveGistId() {
-  const g = document.getElementById("gist-id").value.trim();
-  if (g) localStorage.setItem(LS_GISTID, g); else localStorage.removeItem(LS_GISTID);
-  renderData();
-  showToast(null,{ok:true,text: g ? "Gist ID saved — tap Pull to load that data." : "Gist ID cleared."});
+  if (t) {
+    localStorage.setItem(LS_GHTOKEN, t);
+    renderData();
+    showToast(null,{ok:true,text:"Token saved — syncing now…"});
+    syncNow(); // no second step needed
+  } else {
+    localStorage.removeItem(LS_GHTOKEN);
+    renderData();
+    showToast(null,{ok:true,text:"Token cleared."});
+  }
 }
 function disableSync() {
   localStorage.removeItem(LS_GHTOKEN);
@@ -1828,28 +1905,29 @@ function renderData() {
       '</div>' +
       '<div class="hint">Data lives in this browser\u2019s localStorage. It survives closing the tab and restarting the phone, but clearing browser data erases it \u2014 take a JSON backup now and then.</div>' +
     '</div>' +
-    '<div class="panel-box" style="border-color:#2E5A80"><div class="t" style="color:#5FA8E8">Cloud sync — use on phone AND computer</div>' +
-      (syncConfigured()
-        ? '<div class="kv"><span class="l">Status</span><span style="color:var(--green)">Active</span></div>' +
-          '<div class="kv"><span class="l">Gist ID</span><span style="font-size:10.5px">'+esc(gistId())+'</span></div>' +
-          '<div class="kv"><span class="l">Last sync</span><span>'+(localStorage.getItem(LS_SYNCAT)?fmtTime(new Date(localStorage.getItem(LS_SYNCAT))):"—")+'</span></div>'
-        : '<div class="kv"><span class="l">Status</span><span style="color:var(--amber)">Not set up — this device only</span></div>') +
-      '<div class="hint" id="sync-status" style="margin-top:8px"></div>' +
-      '<div style="margin-top:10px"><label style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)">GITHUB TOKEN (needs \u201cgist\u201d permission)</label>' +
-      '<input type="password" id="gh-token" placeholder="github_pat_… or ghp_…" value="'+esc(ghToken())+'"></div>' +
-      '<div class="btn-row"><button class="btn primary" onclick="saveGhToken()">Save token</button></div>' +
-      '<div style="margin-top:10px"><label style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)">GIST ID</label>' +
-      '<input type="text" id="gist-id" placeholder="paste from your other device" value="'+esc(gistId())+'"></div>' +
-      '<div class="btn-row">' +
-        '<button class="btn primary" onclick="saveGistId()">Save gist ID</button>' +
-        '<button class="btn" onclick="createGist()">Create new sync gist</button>' +
+    '<div class="panel-box" style="border-color:#2E5A80"><div class="t" style="color:#5FA8E8">Sync across devices</div>' +
+      '<div class="btn-row" style="margin-top:0">' +
+        '<button class="btn primary" id="sync-btn" onclick="syncNow()" style="background:#5FA8E8;border-color:#5FA8E8;color:#14201B;font-size:14px;padding:11px 22px">⟳ Sync now</button>' +
       '</div>' +
-      '<div class="btn-row">' +
-        '<button class="btn primary" onclick="pushSync()">↑ Push this device up</button>' +
-        '<button class="btn" onclick="pullSync()">↓ Pull cloud down</button>' +
-        (syncConfigured() ? '<button class="btn danger" onclick="disableSync()">Disable sync</button>' : '') +
+      '<div class="hint" id="sync-status" style="margin-top:8px">' +
+        (ghToken()
+          ? (localStorage.getItem(LS_SYNCAT) ? "Last synced " + fmtTime(new Date(localStorage.getItem(LS_SYNCAT))) + "." : "Ready — tap Sync now.")
+          : "One-time setup needed below.") +
       '</div>' +
-      '<div class="hint">Setup: on your <b>main device</b> (the one with your data) paste a token and tap <b>Create new sync gist</b>. Copy the Gist ID it gives you, then on your <b>other device</b> paste the same token + that Gist ID and tap <b>↓ Pull cloud down</b>. After that both devices sync automatically. Pull overwrites that device\u2019s data, so push from your good device first. Your token is stored only in this browser \u2014 never put it in the GitHub repo.</div>' +
+      (ghToken()
+        ? '<div class="hint">Syncs automatically when you open and close the app. Tap the button any time you want it immediately. Safe to tap on either device in any order — it merges rather than overwrites.</div>'
+        : '<div class="hint" style="margin-top:10px"><b>One-time setup (do this on both devices):</b><br>' +
+          '1. On github.com: avatar → Settings → Developer settings → Personal access tokens → Tokens (classic) → Generate new token (classic)<br>' +
+          '2. Tick only the <b>gist</b> box, set expiry to No expiration, generate, and copy the code<br>' +
+          '3. Paste it below and tap Save. Then tap <b>Sync now</b>.<br>' +
+          'Use the <b>same token on both devices</b> — the app finds your data by itself, so there is nothing else to copy across.</div>') +
+      '<div style="margin-top:10px"><label style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)">GITHUB TOKEN</label>' +
+      '<input type="password" id="gh-token" placeholder="ghp_… or github_pat_…" value="'+esc(ghToken())+'"></div>' +
+      '<div class="btn-row">' +
+        '<button class="btn primary" onclick="saveGhToken()">Save token</button>' +
+        (ghToken() ? '<button class="btn danger" onclick="disableSync()">Turn off sync</button>' : '') +
+      '</div>' +
+      (gistId() ? '<div class="hint" style="margin-top:8px;opacity:.6">Sync file: '+esc(gistId().slice(0,12))+'… (found automatically)</div>' : '') +
     '</div>' +
     '<div class="panel-box"><div class="t">Daily calorie goal</div>' +
       '<input type="text" inputmode="numeric" id="goal-input" value="'+getGoal()+'">' +
@@ -2148,11 +2226,11 @@ try {
   showToast(null,{ok:false,text:"WARNING: this browser blocked storage — data will NOT persist. "+e.message});
 }
 render();
-/* If cloud sync is configured, check whether the other device has newer data. */
-autoSyncOnLoad();
-/* Push pending changes when the app is backgrounded or closed. */
+/* Sync on open so you always start from the latest across devices. */
+if (ghToken()) syncNow(true);
+/* Sync again when the app is backgrounded or closed. */
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && syncConfigured()) pushSync(true);
+  if (document.visibilityState === "hidden" && ghToken()) syncNow(true);
 });
 </script>
 </body>
