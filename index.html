@@ -186,6 +186,14 @@
   .unit-btn { padding:6px 16px; border-radius:8px; cursor:pointer; font-family:var(--mono); font-size:12px;
     font-weight:700; background:transparent; color:var(--ink-dim); border:1px solid var(--blue-dim); }
   .unit-btn.on { background:var(--blue); color:var(--blue-deep); border-color:var(--blue); }
+  .ex-target {
+    font-family:var(--mono); font-size:11.5px; color:var(--ink-dim);
+    background:rgba(95,168,232,.09); border-left:2px solid var(--blue-dim);
+    border-radius:4px; padding:5px 8px; margin:5px 0 6px;
+  }
+  .ex-target.coach { color:var(--blue); border-left-color:var(--blue); background:rgba(95,168,232,.16); }
+  .ex-target b { color:var(--ink); font-size:12.5px; }
+  .ex-why { color:var(--ink-dim); font-style:italic; }
   .avg-bubble {
     background:var(--panel-hi); border:1px solid var(--amber-dim); border-radius:12px;
     padding:13px 16px; margin:14px 0;
@@ -329,6 +337,67 @@ const LS_COACHPLAN = "ledger-coachplan";
 const LS_WORKOUTS = "ledger-workouts";
 const LS_COACHCHAT = "ledger-coachchat";
 const LS_UNITS = "ledger-units";
+const LS_TARGETS = "ledger-targets";
+
+/* ===== Targets =====
+   Two sources, coach wins:
+   - LOCAL: a progressive-overload rule computed from the last logged set.
+   - COACH: explicit targets returned by Claude, stored per exercise.
+   Targets are stored with the unit they were set in and converted on display. */
+function getTargets() {
+  try { return JSON.parse(localStorage.getItem(LS_TARGETS)) || {}; } catch(e) { return {}; }
+}
+function saveTargets(t) {
+  const payload = JSON.stringify(t);
+  localStorage.setItem(LS_TARGETS, payload);
+  if (localStorage.getItem(LS_TARGETS) !== payload) throw new Error("Read-back after save did not match.");
+  return payload.length;
+}
+/* Top of the prescribed rep range, e.g. "4 × 8–10" -> 10 */
+function topReps(setsStr) {
+  const nums = (setsStr || "").match(/\d+/g);
+  if (!nums || nums.length < 2) return null;
+  return parseInt(nums[nums.length-1], 10);
+}
+/* Isolation lifts move in smaller jumps than compounds. */
+function isIsolation(name) {
+  return /curl|raise|pushdown|extension|fly|face pull|squeeze/i.test(name);
+}
+function increment(name) {
+  const U = getUnits();
+  if (U === "lb") return isIsolation(name) ? 2.5 : 5;
+  return isIsolation(name) ? 1 : 2.5;
+}
+/* Local suggestion: hit the top of the rep range -> add weight; otherwise
+   repeat the weight and chase one more rep. */
+function localTarget(ex) {
+  const last = lastSet(ex.n);
+  if (!last || !last.weight) return null;
+  const cap = topReps(ex.s);
+  const lastReps = parseInt(last.reps, 10);
+  const shown = parseFloat(toDisplayWeight(last.weight, setUnitOf(last)));
+  if (isNaN(shown)) return null;
+  if (cap && !isNaN(lastReps) && lastReps >= cap) {
+    return { weight: round1(shown + increment(ex.n)), reps: ex.s.match(/\d+\s*[–-]\s*\d+/) ? String(topReps(ex.s) - 2) : last.reps,
+             why: "hit " + lastReps + " reps — time to add weight", src: "local" };
+  }
+  return { weight: round1(shown), reps: (!isNaN(lastReps) ? String(lastReps + 1) : last.reps),
+           why: "same weight, chase one more rep", src: "local" };
+}
+/* Coach target if present (converted to current units), else local rule. */
+function targetFor(ex) {
+  const t = getTargets()[ex.n];
+  if (t && t.weight) {
+    return {
+      weight: round1(parseFloat(toDisplayWeight(t.weight, t.unit === "kg" ? "kg" : "lb"))),
+      reps: t.reps || "",
+      sets: t.sets || "",
+      why: t.why || "",
+      src: "coach",
+    };
+  }
+  return localTarget(ex);
+}
 
 /* Units: 'lb' or 'kg'. Lift weights are stored exactly as entered along with
    the unit used, so switching display never corrupts past entries — we convert
@@ -642,18 +711,36 @@ function exCard(e, dayName) {
       (best && weightInKg(best) > weightInKg(last) ? "  (best " + bestDisp + " " + U + ")" : "")
     : "No sets logged yet — log today's to start tracking.";
 
+  const tgt = targetFor(e);
+  const tgtLine = tgt
+    ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+'">' +
+      (tgt.src === "coach" ? "◎ Coach target: " : "◎ Target today: ") +
+      '<b>'+tgt.weight+' '+U+'</b>' +
+      (tgt.reps ? ' × '+esc(String(tgt.reps))+' reps' : '') +
+      (tgt.sets ? ' × '+esc(String(tgt.sets))+' sets' : '') +
+      (tgt.why ? '<span class="ex-why"> — '+esc(tgt.why)+'</span>' : '') +
+      '</div>'
+    : '';
+
+  /* Prefill with the target when there is one, so the number in the box is
+     what to aim for, not what you already did. */
+  const preW = tgt ? String(tgt.weight) : lastDisp;
+  const preR = tgt && tgt.reps ? String(tgt.reps) : (last && last.reps ? last.reps : "");
+  const preS = tgt && tgt.sets ? String(tgt.sets) : (last && last.sets ? last.sets : "");
+
   return '<div class="ex-card' + (status==="done" ? " ex-done" : status==="skipped" ? " ex-skipped" : "") + '">' +
     '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
     '<div class="ex-info">' +
       '<div class="ex-name">'+esc(e.n)+ (status==="done" ? ' <span class="ex-tick">✓</span>' : status==="skipped" ? ' <span class="ex-skip-tag">skipped</span>' : '') +'</div>' +
       '<div class="ex-sets">'+esc(e.s)+'</div>' +
+      tgtLine +
       '<ul class="ex-cues">'+e.c.map(c=>'<li>'+esc(c)+'</li>').join("")+'</ul>' +
       (e.p ? '<div class="ex-prog">▲ '+esc(e.p)+'</div>' : '') +
       '<div class="ex-hist">'+esc(histLine)+'</div>' +
       '<div class="ex-log">' +
-        '<input id="w-'+id+'" inputmode="decimal" placeholder="'+U+'" value="'+esc(lastDisp)+'">' +
-        '<input id="r-'+id+'" inputmode="numeric" placeholder="reps" value="'+esc(last&&last.reps?last.reps:"")+'">' +
-        '<input id="s-'+id+'" inputmode="numeric" placeholder="sets" value="'+esc(last&&last.sets?last.sets:"")+'">' +
+        '<input id="w-'+id+'" inputmode="decimal" placeholder="'+U+'" value="'+esc(preW)+'">' +
+        '<input id="r-'+id+'" inputmode="numeric" placeholder="reps" value="'+esc(preR)+'">' +
+        '<input id="s-'+id+'" inputmode="numeric" placeholder="sets" value="'+esc(preS)+'">' +
         '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">✓ Did it</button>' +
         '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>' +
         (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' : '') +
@@ -787,7 +874,7 @@ async function sendCoachChat() {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 1000,
-        system: "You are a strength & conditioning coach inside the client's own training app. Be direct, specific and honest — including when the honest answer is that they're under-loading, under-eating for muscle growth, or expecting spot reduction. Use their actual logged numbers when you answer; if a lift hasn't moved in weeks, say so plainly and give the exact next weight to try. Keep answers under 200 words, plain text, no markdown headers. If they have logged no sets, tell them what to log. Never give medical advice; suggest a professional for pain or injury.\n\nHere is everything known about the client:\n" + coachContext(),
+        system: "You are a strength & conditioning coach inside the client's own training app. Be direct, specific and honest — including when the honest answer is that they're under-loading, under-eating for muscle growth, or expecting spot reduction. Use their actual logged numbers when you answer; if a lift hasn't moved in weeks, say so plainly and give the exact next weight to try. Keep answers under 200 words, plain text, no markdown headers. If they have logged no sets, tell them what to log. When you recommend specific weights, end with one short line: 'Tap Set target weights to put these on your cards.' Never give medical advice; suggest a professional for pain or injury.\n\nHere is everything known about the client:\n" + coachContext(),
         messages: msgs,
       }),
     });
@@ -806,6 +893,70 @@ async function sendCoachChat() {
     const sc = document.getElementById("coach-chat-scroll");
     if (sc) sc.scrollTop = sc.scrollHeight;
   }
+}
+
+/* Ask the coach for concrete target weights per exercise, returned as JSON so
+   they can be written onto the workout cards. */
+async function refreshTargets(silent) {
+  const key = localStorage.getItem(LS_KEY);
+  if (!key) return false;
+  const btn = document.getElementById("co-tgt-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Setting targets…"; }
+  const U = getUnits();
+  try {
+    const exList = [];
+    COACH_PLAN.forEach(day => day.ex.forEach(e => {
+      if (/walk|run/i.test(e.n)) return; // cardio has no load target
+      const last = lastSet(e.n);
+      exList.push('"' + e.n + '" (prescribed ' + e.s + (last && last.weight
+        ? '; last logged ' + toDisplayWeight(last.weight, setUnitOf(last)) + U + ' × ' + (last.reps||"?") + ' reps'
+        : '; never logged') + ')');
+    }));
+    const prompt = coachContext() +
+      "\n\nSet a concrete target load for the NEXT session of each exercise below. Rules: weights in " + U + " only; " +
+      "use realistic gym increments (" + (U==="lb" ? "2.5 or 5 lb" : "1 or 2.5 kg") + "); if a lift has never been logged, " +
+      "suggest a sensible conservative starting weight for this client and say it's a starting estimate; if a lift has stalled, " +
+      "either nudge the load or prescribe the same weight for more reps and say so. Prioritise his marked growth areas. " +
+      "Keep each 'why' under 8 words.\n\nExercises:\n" + exList.join("\n") +
+      "\n\nRespond with ONLY a JSON object, no markdown fences, no other text:\n" +
+      '{"targets":[{"name":"exact exercise name from the list","weight":0,"reps":"8-10","sets":"4","why":"short reason"}]}';
+
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!res.ok) throw new Error("API error " + res.status);
+    const data = await res.json();
+    const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+    const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
+
+    /* Only accept targets whose names match real exercises in the plan. */
+    const valid = new Set();
+    COACH_PLAN.forEach(day => day.ex.forEach(e => valid.add(e.n)));
+    const t = getTargets();
+    let n = 0;
+    (parsed.targets || []).forEach(x => {
+      if (!x || !valid.has(x.name)) return;
+      const wNum = parseFloat(x.weight);
+      if (isNaN(wNum) || wNum <= 0) return;
+      t[x.name] = { weight: wNum, unit: U, reps: x.reps || "", sets: x.sets || "", why: x.why || "", setAt: todayISO() };
+      n++;
+    });
+    saveTargets(t);
+    renderCoach();
+    showToast(null, {ok:true, text: n + " target weights written to your workout cards."});
+    return true;
+  } catch(e) {
+    if (!silent) showToast(null, {ok:false, text:"Couldn't set targets: " + e.message});
+    if (btn) { btn.disabled = false; btn.textContent = "Set target weights"; }
+    return false;
+  }
+}
+function clearTargets() {
+  localStorage.removeItem(LS_TARGETS);
+  renderCoach();
+  showToast(null, {ok:true, text:"Coach targets cleared — cards fall back to automatic progression."});
 }
 
 /* ==================== COACH ==================== */
@@ -1013,7 +1164,11 @@ function renderCoach() {
 
     '<div class="co-box"><div class="t">Coach\u2019s read</div>' +
       '<div class="co-plan-out">Your arms and chest aren\u2019t growing for a fixable reason: light machine work without progressive overload, likely alongside a calorie deficit. The plan below fixes the training half — every pressing and curling movement has a progression rule, and arms get hit twice a week instead of once. The deficit handles the muffin top; no exercise can target it directly. Keep protein high (roughly 130–150 g/day at your weight) so the deficit burns fat, not the muscle you\u2019re building.</div>' +
-      (key ? '<div class="btn-row"><button class="co-btn" id="co-ai-btn" onclick="askCoach()">'+(savedPlan?"Refresh personalized plan":"Generate personalized plan")+'</button></div>' : '<div class="co-sub" style="margin-top:8px">Add your API key in the Data tab to generate a personalized plan from your ledger data + body map.</div>') +
+      (key ? '<div class="btn-row">' +
+        '<button class="co-btn" id="co-ai-btn" onclick="askCoach()">'+(savedPlan?"Refresh personalized plan":"Generate personalized plan")+'</button>' +
+        '<button class="co-btn ghost" id="co-tgt-btn" onclick="refreshTargets()">Set target weights</button>' +
+        (Object.keys(getTargets()).length ? '<button class="co-btn ghost" onclick="clearTargets()">Clear targets</button>' : '') +
+      '</div>' : '<div class="co-sub" style="margin-top:8px">Add your API key in the Data tab to generate a personalized plan from your ledger data + body map.</div>') +
       (savedPlan ? '<div class="co-plan-out" style="margin-top:12px;border-top:1px solid var(--blue-dim);padding-top:12px">'+esc(savedPlan)+'</div>' : '') +
     '</div>' +
 
@@ -1030,7 +1185,7 @@ function renderCoach() {
     '</div>' +
 
     '<div class="co-box" style="padding-bottom:6px"><div class="t">The week — 4 days, any order</div>' +
-      '<div class="co-sub" style="margin-bottom:10px">Tap a day to expand. Enter weight/reps/sets and hit <b>✓ Did it</b> — that\u2019s what teaches the coach whether you\u2019re progressing. <b>Skip</b> carries the exercise forward. AZ heat note: incline walks replace outdoor runs guilt-free June–Sept; keep the 1–2 monthly 5Ks for cooler mornings.</div>' +
+      '<div class="co-sub" style="margin-bottom:10px">Tap a day to expand. Each card shows a <b>target</b> — automatic progression from your last session, or your coach\u2019s number once you\u2019ve tapped <b>Set target weights</b>. The boxes prefill with the target, so just adjust if reality differed, then hit <b>✓ Did it</b>. <b>Skip</b> carries the exercise forward. AZ heat note: incline walks replace outdoor runs guilt-free June–Sept; keep the 1–2 monthly 5Ks for cooler mornings.</div>' +
     '</div>' +
     carryForwardPanel() +
     COACH_PLAN.map((day, di) =>
@@ -1096,7 +1251,9 @@ async function askCoach() {
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     localStorage.setItem(LS_COACHPLAN, text);
     renderCoach();
-    showToast(null, {ok:true, text:"Personalized plan updated."});
+    showToast(null, {ok:true, text:"Plan updated — setting target weights…"});
+    /* Immediately push concrete numbers onto the workout cards. */
+    await refreshTargets(true);
   } catch(e) {
     showToast(null, {ok:false, text:"Coach error: " + e.message});
     if (btn) { btn.disabled = false; btn.textContent = "Generate personalized plan"; }
