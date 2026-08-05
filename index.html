@@ -125,6 +125,67 @@
     border-radius:5px; transition:width .3s ease;
   }
   .loadbar-label { font-family:var(--mono); font-size:11px; color:var(--amber); margin-top:5px; }
+  /* ===== Coach (blue scheme) ===== */
+  :root { --blue:#5FA8E8; --blue-dim:#2E5A80; --blue-deep:#1A2E40; --blue-panel:#1B2836; }
+  .co-box { background:var(--blue-panel); border:1px solid var(--blue-dim); border-radius:12px; padding:14px 16px; margin-bottom:14px; }
+  .co-box .t { font-family:var(--serif); font-size:16px; color:var(--blue); margin-bottom:8px; }
+  .co-sub { font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); line-height:1.55; }
+  .co-day { background:var(--blue-panel); border:1px solid var(--blue-dim); border-radius:12px; margin-bottom:12px; overflow:hidden; }
+  .co-day-head { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; cursor:pointer; }
+  .co-day-head .n { font-family:var(--serif); font-size:15.5px; color:var(--blue); }
+  .co-day-head .m { font-family:var(--mono); font-size:11px; color:var(--ink-dim); }
+  .co-day-body { padding:0 12px 12px; display:none; }
+  .co-day.open .co-day-body { display:block; }
+  .ex-card { display:flex; gap:12px; background:var(--blue-deep); border:1px solid var(--blue-dim); border-radius:10px; padding:11px 12px; margin-bottom:8px; }
+  .ex-fig { flex:0 0 74px; }
+  .ex-fig svg { width:74px; height:74px; display:block; }
+  .ex-info { flex:1; min-width:0; }
+  .ex-name { font-size:14px; font-weight:600; color:var(--ink); }
+  .ex-sets { font-family:var(--mono); font-size:11.5px; color:var(--blue); margin:2px 0 5px; }
+  .ex-cues { font-size:12px; color:var(--ink-dim); line-height:1.5; margin:0; padding-left:16px; }
+  .ex-prog { font-family:var(--mono); font-size:10.5px; color:var(--blue); margin-top:5px; }
+  .co-btn { padding:8px 16px; border-radius:9px; cursor:pointer; font-family:var(--mono); font-size:12px; font-weight:600;
+    background:var(--blue); color:var(--blue-deep); border:1px solid var(--blue); }
+  .co-btn.ghost { background:transparent; color:var(--blue); }
+  .co-btn:disabled { opacity:.5; }
+  .bodymap { display:flex; gap:14px; align-items:flex-start; flex-wrap:wrap; }
+  .bodymap svg { width:170px; height:auto; flex:0 0 auto; }
+  .bm-region { fill:#24384C; stroke:var(--blue-dim); stroke-width:1.5; cursor:pointer; }
+  .bm-region.grow { fill:var(--blue); }
+  .bm-region.trim { fill:var(--amber); }
+  .bm-legend { font-size:12px; color:var(--ink-dim); line-height:1.7; min-width:150px; flex:1; }
+  .bm-chip { display:inline-block; width:11px; height:11px; border-radius:3px; vertical-align:-1px; margin-right:5px; }
+  .co-plan-out { font-size:13.5px; line-height:1.55; color:var(--ink); white-space:pre-wrap; }
+  .co-form { display:flex; gap:8px; flex-wrap:wrap; }
+  .co-form label { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); display:block; margin-bottom:3px; text-transform:uppercase; letter-spacing:.06em; }
+  .co-form .f { flex:1 1 90px; }
+  .co-form input { width:100%; background:var(--bg); border:1px solid var(--blue-dim); border-radius:8px; color:var(--ink); font-family:var(--mono); font-size:13px; padding:9px 10px; }
+  .ex-card.ex-done { border-color:var(--blue); background:#1E3346; }
+  .ex-card.ex-skipped { opacity:.6; border-style:dashed; }
+  .ex-tick { color:var(--blue); font-size:13px; }
+  .ex-skip-tag { color:var(--amber); font-size:10.5px; font-family:var(--mono); }
+  .ex-hist { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); margin-top:6px; }
+  .ex-log { display:flex; gap:5px; flex-wrap:wrap; margin-top:7px; align-items:center; }
+  .ex-log input {
+    width:62px; background:var(--bg); border:1px solid var(--blue-dim); border-radius:7px;
+    color:var(--ink); font-family:var(--mono); font-size:13px; padding:7px 8px;
+  }
+  .co-btn.sm { padding:6px 11px; font-size:11px; }
+  .carry-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px;
+    padding:7px 0; border-bottom:1px solid var(--blue-dim); font-size:13px; }
+  .carry-row:last-child { border-bottom:none; }
+  .carry-meta { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); white-space:nowrap; }
+  .coach-chat { max-height:40vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;
+    background:var(--blue-deep); border:1px solid var(--blue-dim); border-radius:10px; padding:10px; }
+  .coach-chat .cmsg.user { background:var(--blue-dim); }
+  .coach-chat .cmsg.assistant { background:#1F3243; border-color:var(--blue-dim); }
+  #coach-q { flex:1; padding:11px 14px; border-radius:10px; background:var(--bg);
+    border:1px solid var(--blue-dim); color:var(--ink); font-size:16px; outline:none; font-family:var(--sans); }
+  .unit-toggle { display:flex; align-items:center; gap:6px; margin-bottom:12px; }
+  .unit-label { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.06em; margin-right:2px; }
+  .unit-btn { padding:6px 16px; border-radius:8px; cursor:pointer; font-family:var(--mono); font-size:12px;
+    font-weight:700; background:transparent; color:var(--ink-dim); border:1px solid var(--blue-dim); }
+  .unit-btn.on { background:var(--blue); color:var(--blue-deep); border-color:var(--blue); }
   .avg-bubble {
     background:var(--panel-hi); border:1px solid var(--amber-dim); border-radius:12px;
     padding:13px 16px; margin:14px 0;
@@ -220,12 +281,14 @@
   <div class="tabs">
     <button class="tab active" data-tab="log">Log</button>
     <button class="tab" data-tab="trends">Trends</button>
+    <button class="tab" data-tab="coach">Coach</button>
     <button class="tab" data-tab="chat">Chat</button>
     <button class="tab" data-tab="notes">Notes</button>
     <button class="tab" data-tab="data">Data</button>
   </div>
   <div id="view-log"></div>
   <div id="view-trends" style="display:none"></div>
+  <div id="view-coach" style="display:none"></div>
   <div id="view-chat" style="display:none"></div>
   <div id="view-notes" style="display:none"></div>
   <div id="view-data" style="display:none"></div>
@@ -260,6 +323,42 @@ const LS_GOAL  = "ledger-goal";
 const LS_NOTES = "ledger-notes";
 const LS_PINS  = "ledger-pins";
 const LS_CHAT  = "ledger-chat";
+const LS_PROFILE = "ledger-profile";
+const LS_BODYMAP = "ledger-bodymap";
+const LS_COACHPLAN = "ledger-coachplan";
+const LS_WORKOUTS = "ledger-workouts";
+const LS_COACHCHAT = "ledger-coachchat";
+const LS_UNITS = "ledger-units";
+
+/* Units: 'lb' or 'kg'. Lift weights are stored exactly as entered along with
+   the unit used, so switching display never corrupts past entries — we convert
+   on the way out, not in storage. Body weight stays canonical in kg. */
+function getUnits() { return localStorage.getItem(LS_UNITS) === "kg" ? "kg" : "lb"; }
+function setUnits(u) {
+  localStorage.setItem(LS_UNITS, u === "kg" ? "kg" : "lb");
+  render();
+  showToast(null, {ok:true, text:"Weights now shown in " + getUnits() + "."});
+}
+const LB_PER_KG = 2.20462;
+function toDisplayWeight(val, storedUnit) {
+  const n = parseFloat(val);
+  if (isNaN(n)) return "";
+  const su = storedUnit === "kg" ? "kg" : "lb";
+  const du = getUnits();
+  if (su === du) return String(round1(n));
+  return String(round1(su === "kg" ? n * LB_PER_KG : n / LB_PER_KG));
+}
+function round1(n) { return Math.round(n * 10) / 10; }
+/* Body weight helpers — diary always holds kg. */
+function bodyWeightDisplay(kg) {
+  if (kg == null) return null;
+  return getUnits() === "kg" ? round1(kg) : round1(kg * LB_PER_KG);
+}
+function bodyWeightToKg(entered) {
+  const n = parseFloat(entered);
+  if (isNaN(n)) return null;
+  return getUnits() === "kg" ? n : round1(n / LB_PER_KG);
+}
 
 /* No personal data ships in this file — every device starts blank
    and keeps its own private log in that browser's storage. */
@@ -336,6 +435,7 @@ function render() {
   renderRail();
   if (currentTab === "log") renderLog();
   if (currentTab === "trends") renderTrends();
+  if (currentTab === "coach") renderCoach();
   if (currentTab === "chat") renderChat();
   if (currentTab === "notes") renderNotes();
   if (currentTab === "data") renderData();
@@ -428,6 +528,579 @@ function unpin(i) {
   pins.splice(i,1);
   savePins(pins);
   render();
+}
+
+/* ===== Workout logging =====
+   WORKOUTS[exerciseName] = [{date, weight, reps, sets, done}] — newest last.
+   Skipped exercises are tracked so the next session can carry them forward. */
+function getWorkouts() {
+  try { return JSON.parse(localStorage.getItem(LS_WORKOUTS)) || {}; } catch(e) { return {}; }
+}
+function saveWorkouts(w) {
+  const payload = JSON.stringify(w);
+  localStorage.setItem(LS_WORKOUTS, payload);
+  if (localStorage.getItem(LS_WORKOUTS) !== payload) throw new Error("Read-back after save did not match.");
+  return payload.length;
+}
+function exHistory(name) {
+  const w = getWorkouts();
+  return (w[name] || []).filter(s => s.done);
+}
+function lastSet(name) {
+  const h = exHistory(name);
+  return h.length ? h[h.length-1] : null;
+}
+/* Compare across entries regardless of the unit each was logged in.
+   Entries saved before the unit toggle existed carry no `unit` field; the
+   input was labelled kg back then, so they're treated as kg. */
+function setUnitOf(s) { return s.unit === "lb" ? "lb" : "kg"; }
+function weightInKg(s) {
+  const n = parseFloat(s.weight);
+  if (isNaN(n)) return 0;
+  return setUnitOf(s) === "kg" ? n : n / LB_PER_KG;
+}
+/* Best working weight ever logged, for progression nudges. */
+function bestSet(name) {
+  const h = exHistory(name);
+  if (!h.length) return null;
+  return h.reduce((b,s) => weightInKg(s) > weightInKg(b) ? s : b, h[0]);
+}
+
+/* An exercise counts as "owed" if the last time its day was trained,
+   it was left unticked. Those get surfaced at the top of the next session. */
+function getSkipped() {
+  const w = getWorkouts();
+  const owed = [];
+  COACH_PLAN.forEach(day => day.ex.forEach(e => {
+    const entries = w[e.n] || [];
+    if (!entries.length) return;
+    const last = entries[entries.length-1];
+    if (last && !last.done) owed.push({ name: e.n, day: day.name, since: last.date, fig: e.fig, s: e.s });
+  }));
+  return owed;
+}
+
+/* Record a set. done=false marks it explicitly skipped. */
+function logSet(exName, dayName) {
+  const wEl = document.getElementById("w-"+cssId(exName));
+  const rEl = document.getElementById("r-"+cssId(exName));
+  const sEl = document.getElementById("s-"+cssId(exName));
+  const w = getWorkouts();
+  if (!w[exName]) w[exName] = [];
+  w[exName].push({
+    date: todayISO(),
+    day: dayName,
+    weight: wEl ? wEl.value.trim() : "",
+    unit: getUnits(),
+    reps: rEl ? rEl.value.trim() : "",
+    sets: sEl ? sEl.value.trim() : "",
+    done: true,
+  });
+  try { saveWorkouts(w); showToast(null, {ok:true, text:'Logged "'+exName+'" — saved & verified.'}); }
+  catch(e) { showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: "+e.message}); }
+  renderCoach();
+}
+function skipSet(exName, dayName) {
+  const w = getWorkouts();
+  if (!w[exName]) w[exName] = [];
+  w[exName].push({ date: todayISO(), day: dayName, weight:"", reps:"", sets:"", done: false });
+  try { saveWorkouts(w); showToast(null, {ok:true, text:'"'+exName+'" marked skipped — it\'ll carry to your next session.'}); }
+  catch(e) { showToast(null, {ok:false, text:"SAVE FAILED: "+e.message}); }
+  renderCoach();
+}
+function undoLast(exName) {
+  const w = getWorkouts();
+  if (w[exName] && w[exName].length) w[exName].pop();
+  try { saveWorkouts(w); } catch(e) {}
+  renderCoach();
+}
+function cssId(s) { return s.replace(/[^a-zA-Z0-9]/g, "_"); }
+
+/* Did this exercise get logged today (either way)? */
+function todayStatus(name) {
+  const w = getWorkouts();
+  const entries = w[name] || [];
+  const t = entries.filter(e => e.date === todayISO());
+  if (!t.length) return null;
+  return t[t.length-1].done ? "done" : "skipped";
+}
+
+/* Build one exercise card with logging controls and history. */
+function exCard(e, dayName) {
+  const id = cssId(e.n);
+  const last = lastSet(e.n);
+  const best = bestSet(e.n);
+  const status = todayStatus(e.n);
+  const U = getUnits();
+  const lastDisp = last ? toDisplayWeight(last.weight, setUnitOf(last)) : "";
+  const bestDisp = best ? toDisplayWeight(best.weight, setUnitOf(best)) : "";
+  const histLine = last
+    ? 'Last: ' + (lastDisp ? lastDisp + " " + U : "bodyweight") +
+      (last.reps ? " × " + last.reps + " reps" : "") +
+      (last.sets ? " × " + last.sets + " sets" : "") +
+      " · " + fmtShort(last.date) +
+      (best && weightInKg(best) > weightInKg(last) ? "  (best " + bestDisp + " " + U + ")" : "")
+    : "No sets logged yet — log today's to start tracking.";
+
+  return '<div class="ex-card' + (status==="done" ? " ex-done" : status==="skipped" ? " ex-skipped" : "") + '">' +
+    '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
+    '<div class="ex-info">' +
+      '<div class="ex-name">'+esc(e.n)+ (status==="done" ? ' <span class="ex-tick">✓</span>' : status==="skipped" ? ' <span class="ex-skip-tag">skipped</span>' : '') +'</div>' +
+      '<div class="ex-sets">'+esc(e.s)+'</div>' +
+      '<ul class="ex-cues">'+e.c.map(c=>'<li>'+esc(c)+'</li>').join("")+'</ul>' +
+      (e.p ? '<div class="ex-prog">▲ '+esc(e.p)+'</div>' : '') +
+      '<div class="ex-hist">'+esc(histLine)+'</div>' +
+      '<div class="ex-log">' +
+        '<input id="w-'+id+'" inputmode="decimal" placeholder="'+U+'" value="'+esc(lastDisp)+'">' +
+        '<input id="r-'+id+'" inputmode="numeric" placeholder="reps" value="'+esc(last&&last.reps?last.reps:"")+'">' +
+        '<input id="s-'+id+'" inputmode="numeric" placeholder="sets" value="'+esc(last&&last.sets?last.sets:"")+'">' +
+        '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">✓ Did it</button>' +
+        '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>' +
+        (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' : '') +
+      '</div>' +
+    '</div></div>';
+}
+
+/* Delegated handler — keeps exercise names out of inline JS so apostrophes
+   and quotes can't break the buttons (same bug class as quick-adds). */
+document.addEventListener("click", function(e) {
+  const l = e.target.closest("[data-ex-log]");
+  if (l) { logSet(l.dataset.exLog, l.dataset.exDay); return; }
+  const s = e.target.closest("[data-ex-skip]");
+  if (s) { skipSet(s.dataset.exSkip, s.dataset.exDay); return; }
+  const u = e.target.closest("[data-ex-undo]");
+  if (u) { undoLast(u.dataset.exUndo); return; }
+});
+
+/* Shows exercises left unticked last time so they get picked up next session. */
+function carryForwardPanel() {
+  const owed = getSkipped();
+  if (!owed.length) return "";
+  return '<div class="co-box" style="border-color:var(--amber-dim)">' +
+    '<div class="t" style="color:var(--amber)">Carried forward — '+owed.length+' skipped</div>' +
+    '<div class="co-sub" style="margin-bottom:8px">These were skipped last time. Add them to your next session, or tick them off when you catch up.</div>' +
+    owed.map(o =>
+      '<div class="carry-row"><span>'+esc(o.name)+'</span>' +
+      '<span class="carry-meta">'+esc(o.s)+' · skipped '+fmtShort(o.since)+'</span></div>'
+    ).join("") +
+    '</div>';
+}
+
+/* Local progression read — plain arithmetic on the logged sets, so it works
+   with no API key and gives the AI coach something concrete to react to. */
+function progressionReport() {
+  const w = getWorkouts();
+  const lines = [];
+  Object.keys(w).forEach(name => {
+    const h = w[name].filter(s => s.done && s.weight);
+    if (h.length < 2) return;
+    const first = h[0], last = h[h.length-1];
+    const dw = weightInKg(last) - weightInKg(first); // compare in kg regardless of entry unit
+    lines.push({
+      name,
+      from: toDisplayWeight(first.weight, setUnitOf(first)),
+      to: toDisplayWeight(last.weight, setUnitOf(last)),
+      dw, span: h.length, since: first.date,
+    });
+  });
+  return lines;
+}
+function progressionPanel() {
+  const rows = progressionReport();
+  const w = getWorkouts();
+  const totalSets = Object.values(w).reduce((s,arr)=>s+arr.filter(x=>x.done).length,0);
+  if (!totalSets) return '<div class="co-box"><div class="t">Progression</div>' +
+    '<div class="co-sub">Nothing logged yet. Enter weight and reps on the exercise cards and tick <b>✓ Did it</b> — after two sessions per lift, the coach can tell you whether you\u2019re actually progressing or spinning your wheels.</div></div>';
+  const stalled = rows.filter(r => r.dw <= 0 && r.span >= 3);
+  const gaining = rows.filter(r => r.dw > 0);
+  const U = getUnits();
+  return '<div class="co-box"><div class="t">Progression — '+totalSets+' sets logged</div>' +
+    (gaining.length ? '<div class="co-sub" style="color:var(--blue)">▲ Moving up: ' +
+      gaining.map(r=>esc(r.name)+" "+r.from+"→"+r.to+" "+U).join(" · ") + '</div>' : '') +
+    (stalled.length ? '<div class="co-sub" style="color:var(--amber);margin-top:6px">■ Stalled ('+stalled.length+'): ' +
+      stalled.map(r=>esc(r.name)+" stuck at "+r.to+" "+U+" over "+r.span+" sessions").join(" · ") +
+      '<br>If form is solid, add the smallest increment available or add one rep per set.</div>' : '') +
+    (!gaining.length && !stalled.length ? '<div class="co-sub">Log a couple more sessions per lift and the trend will show up here.</div>' : '') +
+    '</div>';
+}
+
+/* ===== Coach chat — separate from the general Chat tab, and it sees
+   the client's actual training + nutrition data. ===== */
+function getCoachChat() {
+  try { return JSON.parse(localStorage.getItem(LS_COACHCHAT)) || []; } catch(e) { return []; }
+}
+function saveCoachChat(h) {
+  try { localStorage.setItem(LS_COACHCHAT, JSON.stringify(h.slice(-30))); } catch(e) {}
+}
+function clearCoachChat() { localStorage.removeItem(LS_COACHCHAT); renderCoach(); }
+function coachChatBody() {
+  const h = getCoachChat();
+  if (!h.length) return '<div class="co-sub" style="padding:6px 2px">No questions yet.</div>';
+  return h.map(m => '<div class="cmsg '+m.role+'">'+esc(m.text)+'</div>').join("");
+}
+
+/* Assembles everything the coach knows about the client. */
+function coachContext() {
+  const p = getProfile();
+  const bm = getBodymap();
+  const avg = averages(loggedDates());
+  const w = getWorkouts();
+  const lifts = [];
+  Object.keys(w).forEach(name => {
+    const h = w[name].filter(s => s.done);
+    if (!h.length) return;
+    const recent = h.slice(-4).map(s => (s.weight ? toDisplayWeight(s.weight, setUnitOf(s))+getUnits() : "bodyweight")+"×"+(s.reps||"?")+" reps×"+(s.sets||"?")+" sets on "+s.date);
+    lifts.push(name + ": " + recent.join(", "));
+  });
+  const owed = getSkipped().map(o => o.name + " (skipped " + o.since + ")");
+  const recentBurn = [];
+  Object.keys(diary).sort().slice(-14).forEach(d => (diary[d].exercise||[]).forEach(x => recentBurn.push(d+": "+x.name)));
+  const U = getUnits();
+  const hUnit = U === "lb" ? "in" : "cm";
+  return "UNITS: every weight below is in "+U+". Give all weight recommendations in "+U+" only — do not convert to or mention the other unit.\n" +
+    "CLIENT: male, age "+(p.age||"32")+", height "+(p.height||"?")+" "+hUnit+", bodyweight "+(p.weight||(latestWeight()!=null?bodyWeightDisplay(latestWeight()):"?"))+" "+U+". Lives in Arizona (extreme summer heat limits outdoor running).\n" +
+    "NUTRITION: calorie goal "+getGoal()+" kcal/day"+(avg?"; actually averaging "+avg.consumed+" kcal/day over "+avg.days+" logged days, net "+avg.net:"; no logged days yet")+".\n" +
+    "BODY MAP GOALS — grow: "+(Object.keys(bm).filter(k=>bm[k]==="grow").join(", ")||"none marked")+"; trim: "+(Object.keys(bm).filter(k=>bm[k]==="trim").join(", ")||"none marked")+".\n" +
+    "PROGRAM: 4-day split (chest/triceps, back/biceps, legs/core, shoulders/arms), plus 12% incline treadmill walks at 3.0 mph for 20-25 min, and 5K runs 1-2x/month.\n" +
+    "LOGGED LIFTS (most recent last): " + (lifts.length ? lifts.join(" | ") : "NONE LOGGED YET") + "\n" +
+    "SKIPPED/OWED: " + (owed.length ? owed.join(", ") : "none") + "\n" +
+    "RECENT GYM SESSIONS IN LEDGER: " + (recentBurn.slice(-8).join("; ") || "none") + "\n" +
+    "HISTORY: reports poor bicep/tricep/chest growth from light machine work; wants to be lean and proportional; has some waist fat.";
+}
+
+async function sendCoachChat() {
+  const inp = document.getElementById("coach-q");
+  const key = localStorage.getItem(LS_KEY);
+  if (!inp || !key) return;
+  const q = inp.value.trim();
+  if (!q) return;
+  const h = getCoachChat();
+  h.push({ role: "user", text: q });
+  saveCoachChat(h);
+  inp.value = "";
+  renderCoach();
+  try {
+    const msgs = h.slice(-8).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: "You are a strength & conditioning coach inside the client's own training app. Be direct, specific and honest — including when the honest answer is that they're under-loading, under-eating for muscle growth, or expecting spot reduction. Use their actual logged numbers when you answer; if a lift hasn't moved in weeks, say so plainly and give the exact next weight to try. Keep answers under 200 words, plain text, no markdown headers. If they have logged no sets, tell them what to log. Never give medical advice; suggest a professional for pain or injury.\n\nHere is everything known about the client:\n" + coachContext(),
+        messages: msgs,
+      }),
+    });
+    if (!res.ok) throw new Error("API error " + res.status);
+    const data = await res.json();
+    const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+    const h2 = getCoachChat();
+    h2.push({ role: "assistant", text: text || "(no response)" });
+    saveCoachChat(h2);
+  } catch(e) {
+    const h2 = getCoachChat();
+    h2.push({ role: "assistant", text: "Error: " + e.message });
+    saveCoachChat(h2);
+  } finally {
+    renderCoach();
+    const sc = document.getElementById("coach-chat-scroll");
+    if (sc) sc.scrollTop = sc.scrollHeight;
+  }
+}
+
+/* ==================== COACH ==================== */
+/* Simple line-art exercise figures, drawn inline so no external images are
+   needed. s = stroke color. */
+function exSvg(kind) {
+  const s = "#5FA8E8", w = 'stroke="'+s+'" stroke-width="3" fill="none" stroke-linecap="round"';
+  const head = (x,y) => '<circle cx="'+x+'" cy="'+y+'" r="6" '+w+'/>';
+  const base = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">';
+  const end = '</svg>';
+  switch(kind) {
+    case "bench": return base +
+      '<line x1="15" y1="70" x2="85" y2="70" '+w+'/><line x1="25" y1="70" x2="25" y2="82" '+w+'/><line x1="75" y1="70" x2="75" y2="82" '+w+'/>' +
+      head(30,58) + '<line x1="36" y1="62" x2="68" y2="64" '+w+'/>' +
+      '<line x1="48" y1="62" x2="48" y2="40" '+w+'/><line x1="60" y1="63" x2="60" y2="40" '+w+'/>' +
+      '<line x1="34" y1="36" x2="74" y2="36" stroke="'+s+'" stroke-width="4"/><circle cx="34" cy="36" r="5" fill="'+s+'"/><circle cx="74" cy="36" r="5" fill="'+s+'"/>' + end;
+    case "press": return base +
+      head(50,30) + '<line x1="50" y1="36" x2="50" y2="66" '+w+'/>' +
+      '<line x1="50" y1="44" x2="34" y2="30" '+w+'/><line x1="50" y1="44" x2="66" y2="30" '+w+'/>' +
+      '<line x1="26" y1="22" x2="42" y2="22" stroke="'+s+'" stroke-width="4"/><line x1="58" y1="22" x2="74" y2="22" stroke="'+s+'" stroke-width="4"/>' +
+      '<line x1="50" y1="66" x2="40" y2="88" '+w+'/><line x1="50" y1="66" x2="60" y2="88" '+w+'/>' + end;
+    case "curl": return base +
+      head(50,24) + '<line x1="50" y1="30" x2="50" y2="64" '+w+'/>' +
+      '<line x1="50" y1="40" x2="36" y2="52" '+w+'/><line x1="36" y1="52" x2="40" y2="34" '+w+'/>' +
+      '<line x1="50" y1="40" x2="64" y2="52" '+w+'/><line x1="64" y1="52" x2="60" y2="34" '+w+'/>' +
+      '<circle cx="40" cy="32" r="5" fill="'+s+'"/><circle cx="60" cy="32" r="5" fill="'+s+'"/>' +
+      '<line x1="50" y1="64" x2="42" y2="88" '+w+'/><line x1="50" y1="64" x2="58" y2="88" '+w+'/>' + end;
+    case "pushdown": return base +
+      '<line x1="50" y1="8" x2="50" y2="20" '+w+'/>' +
+      head(46,30) + '<line x1="46" y1="36" x2="46" y2="66" '+w+'/>' +
+      '<line x1="46" y1="44" x2="58" y2="52" '+w+'/><line x1="58" y1="52" x2="58" y2="66" '+w+'/>' +
+      '<line x1="50" y1="66" x2="52" y2="66" '+w+'/><line x1="46" y1="66" x2="40" y2="90" '+w+'/><line x1="46" y1="66" x2="54" y2="90" '+w+'/>' +
+      '<line x1="52" y1="20" x2="64" y2="44" stroke="'+s+'" stroke-width="2" stroke-dasharray="3 3"/>' + end;
+    case "row": return base +
+      head(30,36) + '<line x1="34" y1="42" x2="52" y2="52" '+w+'/>' +
+      '<line x1="52" y1="52" x2="52" y2="72" '+w+'/><line x1="52" y1="72" x2="72" y2="72" '+w+'/>' +
+      '<line x1="40" y1="48" x2="56" y2="40" '+w+'/><circle cx="58" cy="38" r="4" fill="'+s+'"/>' +
+      '<line x1="70" y1="30" x2="70" y2="50" stroke="'+s+'" stroke-width="3"/>' + end;
+    case "pulldown": return base +
+      '<line x1="30" y1="12" x2="70" y2="12" stroke="'+s+'" stroke-width="4"/>' +
+      head(50,34) + '<line x1="50" y1="40" x2="50" y2="66" '+w+'/>' +
+      '<line x1="50" y1="46" x2="36" y2="24" '+w+'/><line x1="50" y1="46" x2="64" y2="24" '+w+'/>' +
+      '<line x1="50" y1="66" x2="42" y2="82" '+w+'/><line x1="50" y1="66" x2="58" y2="82" '+w+'/>' + end;
+    case "squat": return base +
+      '<line x1="34" y1="26" x2="66" y2="26" stroke="'+s+'" stroke-width="4"/>' +
+      head(50,20) + '<line x1="50" y1="26" x2="50" y2="52" '+w+'/>' +
+      '<line x1="50" y1="52" x2="34" y2="60" '+w+'/><line x1="34" y1="60" x2="36" y2="84" '+w+'/>' +
+      '<line x1="50" y1="52" x2="66" y2="60" '+w+'/><line x1="66" y1="60" x2="64" y2="84" '+w+'/>' + end;
+    case "plank": return base +
+      head(22,52) + '<line x1="28" y1="56" x2="72" y2="60" '+w+'/>' +
+      '<line x1="30" y1="58" x2="30" y2="74" '+w+'/><line x1="72" y1="60" x2="84" y2="76" '+w+'/>' +
+      '<line x1="16" y1="76" x2="90" y2="76" stroke="'+s+'" stroke-width="2"/>' + end;
+    case "treadmill": return base +
+      '<line x1="14" y1="80" x2="80" y2="80" stroke="'+s+'" stroke-width="4"/><line x1="80" y1="80" x2="88" y2="40" '+w+'/>' +
+      head(46,32) + '<line x1="46" y1="38" x2="48" y2="58" '+w+'/>' +
+      '<line x1="47" y1="44" x2="38" y2="54" '+w+'/><line x1="47" y1="44" x2="58" y2="50" '+w+'/>' +
+      '<line x1="48" y1="58" x2="38" y2="76" '+w+'/><line x1="48" y1="58" x2="60" y2="70" '+w+'/><line x1="60" y1="70" x2="58" y2="78" '+w+'/>' + end;
+    case "run": return base +
+      head(50,26) + '<line x1="50" y1="32" x2="54" y2="54" '+w+'/>' +
+      '<line x1="51" y1="38" x2="38" y2="46" '+w+'/><line x1="51" y1="38" x2="66" y2="34" '+w+'/>' +
+      '<line x1="54" y1="54" x2="38" y2="70" '+w+'/><line x1="38" y1="70" x2="42" y2="84" '+w+'/>' +
+      '<line x1="54" y1="54" x2="68" y2="66" '+w+'/><line x1="68" y1="66" x2="80" y2="62" '+w+'/>' + end;
+    case "fly": return base +
+      head(50,28) + '<line x1="50" y1="34" x2="50" y2="64" '+w+'/>' +
+      '<path d="M50 44 Q34 40 26 48" '+w+'/><path d="M50 44 Q66 40 74 48" '+w+'/>' +
+      '<circle cx="26" cy="48" r="5" fill="'+s+'"/><circle cx="74" cy="48" r="5" fill="'+s+'"/>' +
+      '<line x1="50" y1="64" x2="42" y2="86" '+w+'/><line x1="50" y1="64" x2="58" y2="86" '+w+'/>' + end;
+    default: return base + head(50,30) + '<line x1="50" y1="36" x2="50" y2="70" '+w+'/>' + end;
+  }
+}
+
+/* Default 4-day plan targeting Patrick's stated goals: arm/chest size,
+   waist trim (via deficit), keep his incline-walk cardio. */
+const COACH_PLAN = [
+  { name: "Day 1 — Chest & Triceps", burn: 300, meta: "~50 min + incline walk", ex: [
+    { fig:"treadmill", n:"Incline walk warm-up", s:"8–10 min · 12% · 3.0 mph", c:["Your usual walk, shortened — just to warm up, not to tire out."], p:"" },
+    { fig:"bench", n:"Dumbbell bench press", s:"4 × 8–10", c:["Lower to chest with control, press up hard.","Pick a weight where the last 2 reps are a genuine fight."], p:"Add 1–2 kg once you hit 4×10 clean." },
+    { fig:"press", n:"Incline dumbbell press", s:"3 × 8–10", c:["Bench at ~30°. Builds the upper chest that shapes the shelf look."], p:"Progress same as bench." },
+    { fig:"fly", n:"Chest fly (your squeeze machine)", s:"3 × 12", c:["Now it's a finisher, not the main event.","Squeeze 1 sec at the middle."], p:"Last exercise — chase the burn, not the load." },
+    { fig:"pushdown", n:"Triceps rope pushdown", s:"3 × 10–12", c:["Elbows pinned to your sides.","Split the rope apart at the bottom."], p:"Add weight when 3×12 feels smooth." },
+    { fig:"press", n:"Overhead triceps extension", s:"3 × 10–12", c:["Hits the long head — the bulk of tricep size.","Full stretch behind the head."], p:"Slow negatives beat heavy sloppy reps." },
+  ]},
+  { name: "Day 2 — Back & Biceps", burn: 300, meta: "~50 min", ex: [
+    { fig:"treadmill", n:"Incline walk warm-up", s:"8–10 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
+    { fig:"pulldown", n:"Lat pulldown", s:"4 × 8–10", c:["Pull to upper chest, elbows down and back.","A wide back makes the waist look smaller — free proportion points."], p:"Add a plate when 4×10 is clean." },
+    { fig:"row", n:"Seated cable row", s:"3 × 10", c:["Chest tall, squeeze shoulder blades together."], p:"" },
+    { fig:"curl", n:"Dumbbell curls", s:"3 × 8–10", c:["THE bicep builder — go heavier than feels polite.","No swinging; brace your core."], p:"This is where arm size comes from: +1 kg or +1 rep every week or two." },
+    { fig:"curl", n:"Hammer curls", s:"3 × 10–12", c:["Palms facing in — thickens the arm from the side view."], p:"" },
+    { fig:"row", n:"Face pulls", s:"3 × 15", c:["Pull rope to your face, elbows high.","Posture + rear delts — makes everything look better."], p:"Light weight, strict form." },
+  ]},
+  { name: "Day 3 — Legs & Core", burn: 320, meta: "~45 min + optional run", ex: [
+    { fig:"treadmill", n:"Incline walk warm-up", s:"8 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
+    { fig:"squat", n:"Goblet squat", s:"4 × 10", c:["Hold a dumbbell at your chest, sit between your heels.","Legs are half your body — training them burns serious calories."], p:"Move to barbell squats when the heaviest dumbbell feels easy." },
+    { fig:"squat", n:"Romanian deadlift", s:"3 × 10", c:["Hinge at hips, soft knees, feel the hamstring stretch."], p:"" },
+    { fig:"plank", n:"Plank", s:"3 × 45–60 sec", c:["Squeeze glutes, don't let hips sag.","Builds the muscle the deficit will eventually reveal."], p:"Add 10 sec when 60 feels routine." },
+    { fig:"plank", n:"Side plank", s:"2 × 30 sec each side", c:["Directly works the oblique area under the muffin top.","Remember: reveals come from the deficit, strength comes from this."], p:"" },
+    { fig:"run", n:"Flat run finisher", s:"5–10 min easy", c:["Your occasional flat run, formalized. Skip if legs are cooked."], p:"" },
+  ]},
+  { name: "Day 4 — Shoulders & Arms", burn: 280, meta: "~45 min + incline walk", ex: [
+    { fig:"press", n:"Dumbbell shoulder press", s:"4 × 8–10", c:["Capped shoulders are most of the 'ripped and proportional' look."], p:"Add weight at 4×10." },
+    { fig:"fly", n:"Lateral raises", s:"3 × 12–15", c:["Light weight, arms to shoulder height, slight lean forward.","Width here narrows the waist visually."], p:"Reps before weight on these." },
+    { fig:"curl", n:"EZ-bar or dumbbell curls", s:"3 × 8–10", c:["Second weekly bicep hit — frequency is what your arms were missing."], p:"Track the weight. Beat it slowly." },
+    { fig:"pushdown", n:"Close-grip press or bench dips", s:"3 × 8–10", c:["Second weekly tricep hit — triceps are ⅔ of arm size."], p:"" },
+    { fig:"treadmill", n:"Incline walk finisher", s:"20–25 min · 12% · 3.0", c:["Your favourite, at full length — great low-impact burn for the AZ heat months."], p:"" },
+  ]},
+];
+
+function getProfile() {
+  try { return JSON.parse(localStorage.getItem(LS_PROFILE)) || {}; } catch(e) { return {}; }
+}
+function getBodymap() {
+  try { return JSON.parse(localStorage.getItem(LS_BODYMAP)) || {}; } catch(e) { return {}; }
+}
+function latestWeight() {
+  const dates = Object.keys(diary).sort().reverse();
+  for (const d of dates) if (diary[d].weightKg != null) return diary[d].weightKg;
+  return null;
+}
+
+const BM_REGIONS = [
+  ["shoulders","Shoulders"],["chest","Chest"],["biceps","Biceps"],["triceps","Triceps"],
+  ["core","Abs / waist"],["obliques","Love handles"],["back","Back"],["legs","Legs"],
+];
+
+function bodymapSvg() {
+  const bm = getBodymap();
+  const cls = r => "bm-region " + (bm[r] || "");
+  return '<svg viewBox="0 0 200 340" xmlns="http://www.w3.org/2000/svg">' +
+    '<circle cx="100" cy="30" r="20" class="bm-region" style="cursor:default"/>' +
+    '<ellipse cx="70" cy="70" rx="14" ry="11" class="'+cls("shoulders")+'" data-bm="shoulders"/>' +
+    '<ellipse cx="130" cy="70" rx="14" ry="11" class="'+cls("shoulders")+'" data-bm="shoulders"/>' +
+    '<rect x="72" y="66" width="56" height="44" rx="10" class="'+cls("chest")+'" data-bm="chest"/>' +
+    '<ellipse cx="54" cy="102" rx="9" ry="20" class="'+cls("biceps")+'" data-bm="biceps"/>' +
+    '<ellipse cx="146" cy="102" rx="9" ry="20" class="'+cls("biceps")+'" data-bm="biceps"/>' +
+    '<ellipse cx="47" cy="140" rx="8" ry="17" class="'+cls("triceps")+'" data-bm="triceps"/>' +
+    '<ellipse cx="153" cy="140" rx="8" ry="17" class="'+cls("triceps")+'" data-bm="triceps"/>' +
+    '<rect x="76" y="114" width="48" height="42" rx="9" class="'+cls("core")+'" data-bm="core"/>' +
+    '<ellipse cx="68" cy="150" rx="8" ry="14" class="'+cls("obliques")+'" data-bm="obliques"/>' +
+    '<ellipse cx="132" cy="150" rx="8" ry="14" class="'+cls("obliques")+'" data-bm="obliques"/>' +
+    '<rect x="82" y="160" width="36" height="16" rx="7" class="'+cls("back")+'" data-bm="back"/>' +
+    '<ellipse cx="85" cy="215" rx="13" ry="36" class="'+cls("legs")+'" data-bm="legs"/>' +
+    '<ellipse cx="115" cy="215" rx="13" ry="36" class="'+cls("legs")+'" data-bm="legs"/>' +
+    '<ellipse cx="85" cy="288" rx="9" ry="28" class="'+cls("legs")+'" data-bm="legs"/>' +
+    '<ellipse cx="115" cy="288" rx="9" ry="28" class="'+cls("legs")+'" data-bm="legs"/>' +
+    '</svg>';
+}
+
+/* Tap cycles a region: neutral → grow (blue) → trim (amber) → neutral. */
+document.addEventListener("click", function(e) {
+  const el = e.target.closest("[data-bm]");
+  if (!el) return;
+  const r = el.dataset.bm;
+  const bm = getBodymap();
+  bm[r] = bm[r] === "grow" ? "trim" : bm[r] === "trim" ? "" : "grow";
+  if (!bm[r]) delete bm[r];
+  localStorage.setItem(LS_BODYMAP, JSON.stringify(bm));
+  renderCoach();
+});
+
+function bmSummary() {
+  const bm = getBodymap();
+  const grow = BM_REGIONS.filter(([k]) => bm[k]==="grow").map(([,l])=>l);
+  const trim = BM_REGIONS.filter(([k]) => bm[k]==="trim").map(([,l])=>l);
+  let out = [];
+  if (grow.length) out.push("Grow: " + grow.join(", "));
+  if (trim.length) out.push("Trim: " + trim.join(", "));
+  return out.join("  ·  ") || "Tap the figure to mark goals";
+}
+
+function renderCoach() {
+  const v = document.getElementById("view-coach");
+  const p = getProfile();
+  const w = latestWeight();
+  const key = localStorage.getItem(LS_KEY);
+  const savedPlan = localStorage.getItem(LS_COACHPLAN);
+  const avg = averages(loggedDates());
+
+  v.innerHTML =
+    '<div class="co-box"><div class="t">Your profile</div>' +
+      '<div class="unit-toggle">' +
+        '<span class="unit-label">Weight units</span>' +
+        '<button class="unit-btn'+(getUnits()==="lb"?" on":"")+'" onclick="setUnits(\'lb\')">lb</button>' +
+        '<button class="unit-btn'+(getUnits()==="kg"?" on":"")+'" onclick="setUnits(\'kg\')">kg</button>' +
+      '</div>' +
+      '<div class="co-form">' +
+        '<div class="f"><label>Age</label><input id="co-age" inputmode="numeric" value="'+esc(p.age||"")+'" placeholder="32"></div>' +
+        '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="co-height" inputmode="numeric" value="'+esc(p.height||"")+'" placeholder="'+(getUnits()==="lb"?"69":"175")+'"></div>' +
+        '<div class="f"><label>Weight '+getUnits()+'</label><input id="co-weight" inputmode="decimal" value="'+esc(p.weight || (w!=null?String(bodyWeightDisplay(w)):""))+'" placeholder="'+(getUnits()==="lb"?"161":"73")+'"></div>' +
+      '</div>' +
+      '<div class="btn-row"><button class="co-btn" onclick="saveCoachProfile()">Save profile</button></div>' +
+      (avg ? '<div class="co-sub" style="margin-top:10px">From your ledger: averaging '+avg.consumed.toLocaleString()+' kcal/day over '+avg.days+' logged days · goal '+getGoal().toLocaleString()+'.</div>' : '') +
+    '</div>' +
+
+    '<div class="co-box"><div class="t">Body map — tap to set goals</div>' +
+      '<div class="bodymap">' + bodymapSvg() +
+        '<div class="bm-legend">' +
+          '<div><span class="bm-chip" style="background:var(--blue)"></span>Tap once = <b>grow</b> this area</div>' +
+          '<div><span class="bm-chip" style="background:var(--amber)"></span>Tap twice = <b>trim</b> fat here</div>' +
+          '<div><span class="bm-chip" style="background:#24384C;border:1px solid var(--blue-dim)"></span>Third tap = clear</div>' +
+          '<div style="margin-top:8px;color:var(--blue);font-family:var(--mono);font-size:11px">'+esc(bmSummary())+'</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="co-sub" style="margin-top:10px">Straight talk: you can\u2019t spot-reduce fat — \u201ctrim\u201d areas shrink through your calorie deficit, which the ledger is already tracking. What the map changes is <b>muscle emphasis</b>: \u201cgrow\u201d areas get extra volume in your plan.</div>' +
+    '</div>' +
+
+    '<div class="co-box"><div class="t">Coach\u2019s read</div>' +
+      '<div class="co-plan-out">Your arms and chest aren\u2019t growing for a fixable reason: light machine work without progressive overload, likely alongside a calorie deficit. The plan below fixes the training half — every pressing and curling movement has a progression rule, and arms get hit twice a week instead of once. The deficit handles the muffin top; no exercise can target it directly. Keep protein high (roughly 130–150 g/day at your weight) so the deficit burns fat, not the muscle you\u2019re building.</div>' +
+      (key ? '<div class="btn-row"><button class="co-btn" id="co-ai-btn" onclick="askCoach()">'+(savedPlan?"Refresh personalized plan":"Generate personalized plan")+'</button></div>' : '<div class="co-sub" style="margin-top:8px">Add your API key in the Data tab to generate a personalized plan from your ledger data + body map.</div>') +
+      (savedPlan ? '<div class="co-plan-out" style="margin-top:12px;border-top:1px solid var(--blue-dim);padding-top:12px">'+esc(savedPlan)+'</div>' : '') +
+    '</div>' +
+
+    progressionPanel() +
+
+    '<div class="co-box"><div class="t">Ask your coach</div>' +
+      '<div class="co-sub" style="margin-bottom:8px">Your coach sees your logged lifts, progression, skipped exercises, calorie averages and body map. Ask things like \u201cam I lifting enough?\u201d or \u201cwhy aren\u2019t my arms growing?\u201d</div>' +
+      '<div id="coach-chat-scroll" class="coach-chat">' + coachChatBody() + '</div>' +
+      (key ? '<div class="row" style="margin-top:8px">' +
+        '<input id="coach-q" placeholder="Ask your coach…" autocomplete="off">' +
+        '<button class="co-btn" onclick="sendCoachChat()">Ask</button>' +
+        (getCoachChat().length ? '<button class="co-btn ghost" onclick="clearCoachChat()">Clear</button>' : '') +
+      '</div>' : '<div class="co-sub">Add your API key in the Data tab to chat with your coach.</div>') +
+    '</div>' +
+
+    '<div class="co-box" style="padding-bottom:6px"><div class="t">The week — 4 days, any order</div>' +
+      '<div class="co-sub" style="margin-bottom:10px">Tap a day to expand. Enter weight/reps/sets and hit <b>✓ Did it</b> — that\u2019s what teaches the coach whether you\u2019re progressing. <b>Skip</b> carries the exercise forward. AZ heat note: incline walks replace outdoor runs guilt-free June–Sept; keep the 1–2 monthly 5Ks for cooler mornings.</div>' +
+    '</div>' +
+    carryForwardPanel() +
+    COACH_PLAN.map((day, di) =>
+      '<div class="co-day" id="co-day-'+di+'">' +
+        '<div class="co-day-head" onclick="toggleDay('+di+')">' +
+          '<span class="n">'+day.name+'</span><span class="m">'+day.meta+'</span>' +
+        '</div>' +
+        '<div class="co-day-body">' +
+          day.ex.map(e => exCard(e, day.name)).join("") +
+          '<div class="btn-row"><button class="co-btn" onclick="logWorkout('+di+')">Done — log ~'+day.burn+' kcal burn to today</button></div>' +
+        '</div>' +
+      '</div>'
+    ).join("") +
+    '<div class="co-sub" style="margin:4px 0 10px">General fitness guidance, not medical advice. Ease in if anything hurts beyond normal muscle burn.</div>';
+
+  const cq = document.getElementById("coach-q");
+  if (cq) cq.addEventListener("keydown", ev => { if (ev.key === "Enter") sendCoachChat(); });
+  const csc = document.getElementById("coach-chat-scroll");
+  if (csc) csc.scrollTop = csc.scrollHeight;
+}
+
+function toggleDay(di) {
+  document.getElementById("co-day-"+di).classList.toggle("open");
+}function saveCoachProfile() {
+  const p = {
+    age: document.getElementById("co-age").value.trim(),
+    height: document.getElementById("co-height").value.trim(),
+    weight: document.getElementById("co-weight").value.trim(),
+    unit: getUnits(),
+  };
+  localStorage.setItem(LS_PROFILE, JSON.stringify(p));
+  showToast(null, {ok:true, text:"Profile saved."});
+}
+function logWorkout(di) {
+  const day = COACH_PLAN[di];
+  const entry = ensureDay(todayISO());
+  entry.exercise.push({ name: "Gym — " + day.name.replace(/^Day \d+ — /,""), kcal: day.burn });
+  selected = todayISO();
+  try { saveDiary(); showToast(null, {ok:true, text:day.name+" logged — "+day.burn+" kcal burn added to today."}); }
+  catch(e) { showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: "+e.message}); }
+  render();
+}
+
+async function askCoach() {
+  const btn = document.getElementById("co-ai-btn");
+  const key = localStorage.getItem(LS_KEY);
+  if (!key || !btn) return;
+  btn.disabled = true; btn.textContent = "Coaching…";
+  try {
+    const p = getProfile();
+    const bm = getBodymap();
+    const avg = averages(loggedDates());
+    const recentEx = [];
+    Object.keys(diary).sort().slice(-14).forEach(d => (diary[d].exercise||[]).forEach(x => recentEx.push(d+": "+x.name+" ("+x.kcal+" kcal)")));
+    const prompt = coachContext() + "\n\nGive a concise personalized assessment and week-plan adjustment in plain text (no markdown): 1) calorie and protein guidance for his recomposition goal, 2) specific set/rep/weight-progression changes emphasizing his marked growth areas — reference his ACTUAL logged weights where available and name the next weight to try, 3) whether his current loading looks sufficient or too light, 4) cardio strategy for Arizona heat, 5) one realistic expectation about timeline. Max ~320 words, direct and specific.";
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+    });
+    if (!res.ok) throw new Error("API error " + res.status);
+    const data = await res.json();
+    const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+    localStorage.setItem(LS_COACHPLAN, text);
+    renderCoach();
+    showToast(null, {ok:true, text:"Personalized plan updated."});
+  } catch(e) {
+    showToast(null, {ok:false, text:"Coach error: " + e.message});
+    if (btn) { btn.disabled = false; btn.textContent = "Generate personalized plan"; }
+  }
 }
 
 /* ---------------- chat (general Q&A, not logged) ---------------- */
@@ -666,7 +1339,7 @@ function renderLog() {
       chip("Burned", burned ? "−"+burned.toLocaleString() : "0", burned ? "var(--green)" : undefined) +
       chip("Net", net.toLocaleString(), "var(--amber)") +
       chip(over?"Over by":"Remaining", Math.abs(remaining).toLocaleString(), over?"var(--red)":"var(--green)") +
-      chip("Weight", entry.weightKg!=null ? entry.weightKg+" kg" : "—") +
+      chip("Weight", entry.weightKg!=null ? bodyWeightDisplay(entry.weightKg)+" "+getUnits() : "—") +
       chip("Body fat", entry.bodyFatPct!=null ? entry.bodyFatPct+"%" : "—") +
     '</div>' + avgHtml + quickAddBar() + mealsHtml + exHtml +
     '<div class="btn-row" style="margin-top:22px">' +
@@ -887,7 +1560,7 @@ document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dat
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===name));
-  ["log","trends","chat","notes","data"].forEach(n => document.getElementById("view-"+n).style.display = n===name ? "" : "none");
+  ["log","trends","coach","chat","notes","data"].forEach(n => document.getElementById("view-"+n).style.display = n===name ? "" : "none");
   render();
 }
 
@@ -1058,7 +1731,7 @@ function applyUpdates(updates) {
 function parseOffline(text) {
   const t = text.trim();
   let m = t.match(/^weight\s+([\d.]+)/i);
-  if (m) return { updates:[{date:selected, weightKg:parseFloat(m[1])}], reply:"Weight logged: "+m[1]+" kg." };
+  if (m) return { updates:[{date:selected, weightKg:bodyWeightToKg(m[1])}], reply:"Weight logged: "+m[1]+" "+getUnits()+"." };
   m = t.match(/^(?:bf|body\s*fat)\s+([\d.]+)/i);
   if (m) return { updates:[{date:selected, bodyFatPct:parseFloat(m[1])}], reply:"Body fat logged: "+m[1]+"%." };
   m = t.match(/^(.+?)\s*=\s*-\s*(\d+)\s*$/);
@@ -1078,9 +1751,9 @@ ${JSON.stringify(diary, null, 1)}
 
 The user typed: "${userText}"
 
-Interpret this as diary updates. Estimate calories realistically (typical restaurant/label values, sensible rounding). Resolve relative days like "yesterday" against today's date. If a calorie count is label-confirmed, use it exactly with note "Label-confirmed". For corrections/removals, use removeIndexes (meals) or removeExerciseIndexes (exercise) on the matching array index for that date. Weight is kg; body fat is %. If the message isn't loggable, return empty updates and answer briefly in "reply".
+Interpret this as diary updates. Estimate calories realistically (typical restaurant/label values, sensible rounding). Resolve relative days like "yesterday" against today's date. If a calorie count is label-confirmed, use it exactly with note "Label-confirmed". For corrections/removals, use removeIndexes (meals) or removeExerciseIndexes (exercise) on the matching array index for that date. The user enters bodyweight in ${getUnits()} — the weightKg field MUST be in kilograms, so convert if they are using pounds (divide by 2.20462). Body fat is %. If the message isn't loggable, return empty updates and answer briefly in "reply".
 
-EXERCISE: if the user describes physical activity (a run, gym session, cycling, a long walk, sport, etc.), log it in addExercise with kcal = estimated calories BURNED (positive number). Estimate from activity, duration/distance, and intensity for a ~73 kg adult; if duration or intensity is missing and it changes the estimate meaningfully, ask a clarifying question instead. Exercise reduces the day's net calories in the app automatically — never log it as a negative meal.
+EXERCISE: if the user describes physical activity (a run, gym session, cycling, a long walk, sport, etc.), log it in addExercise with kcal = estimated calories BURNED (positive number). Estimate from activity, duration/distance, and intensity for an adult weighing ${latestWeight() != null ? latestWeight() : 73} kg; if duration or intensity is missing and it changes the estimate meaningfully, ask a clarifying question instead. Exercise reduces the day's net calories in the app automatically — never log it as a negative meal.
 
 IMPORTANT — clarifying questions: if the calorie estimate would swing meaningfully (roughly 75+ kcal) based on size, quantity, preparation, or type that the user did not specify (e.g. "an apricot" could be small/large/dried, "a latte" could be 8/12/16 oz or whole/skim/oat milk, "fries" could be small/medium/large), do NOT guess. Instead return empty updates and a "question" object with 2-4 short tappable options, each including its approximate kcal, e.g. {"text":"What kind of apricot?","options":["Fresh, small (~17 kcal)","Fresh, large (~35 kcal)","Dried, 5 pieces (~85 kcal)"]}. Ask at most ONE question per message and only when it genuinely matters — if the message says "(clarification: …)" it contains the answer, so log it without asking again. For trivial ambiguity, just use the typical value.
 
