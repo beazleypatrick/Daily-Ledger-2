@@ -43,6 +43,12 @@
     border:1px solid var(--line); border-radius:10px; cursor:pointer; text-align:left;
     color:inherit; font-family:inherit;
   }
+  .rail-insert {
+    flex:0 0 auto; align-self:center; width:22px; height:44px; border-radius:8px;
+    background:transparent; border:1px dashed var(--amber-dim); color:var(--amber);
+    font-size:15px; cursor:pointer; font-family:inherit; padding:0;
+  }
+  .rail-insert:active { background:var(--amber); color:var(--bg); }
   .day-card.future { border-style:dashed; opacity:.85; }
   .day-card.future .d { color:var(--amber); }
   .day-card.active { background:var(--panel-hi); border-color:var(--amber); }
@@ -111,6 +117,14 @@
   #chat-q { flex:1; padding:12px 16px; border-radius:12px; background:var(--panel); border:1px solid var(--line); color:var(--ink); font-size:16px; outline:none; font-family:var(--sans); }
   #chat-q-send { padding:0 20px; border-radius:12px; cursor:pointer; background:var(--amber); color:var(--bg); border:1px solid var(--amber); font-weight:700; }
   #chat-q-send:disabled { background:var(--panel); color:var(--ink-dim); border-color:var(--line); }
+  .loadbar { display:none; margin-bottom:8px; }
+  .loadbar.on { display:block; }
+  .loadbar-track { height:6px; background:var(--panel); border:1px solid var(--line); border-radius:5px; overflow:hidden; }
+  .loadbar-fill {
+    height:100%; width:0%; background:linear-gradient(90deg,var(--amber-dim),var(--amber));
+    border-radius:5px; transition:width .3s ease;
+  }
+  .loadbar-label { font-family:var(--mono); font-size:11px; color:var(--amber); margin-top:5px; }
   .avg-bubble {
     background:var(--panel-hi); border:1px solid var(--amber-dim); border-radius:12px;
     padding:13px 16px; margin:14px 0;
@@ -224,6 +238,10 @@
       <div id="toast-reply"></div>
       <div class="opts" id="toast-opts"></div>
       <div class="status" id="toast-status"></div>
+    </div>
+    <div class="loadbar" id="loadbar">
+      <div class="loadbar-track"><div class="loadbar-fill" id="loadbar-fill"></div></div>
+      <div class="loadbar-label" id="loadbar-label">Thinking…</div>
     </div>
     <div class="row">
       <input id="chat-input" placeholder="Tell the ledger what you ate…" autocomplete="off">
@@ -345,36 +363,49 @@ function frequentItems(limit) {
     .slice(0, limit || 6);
 }
 
+/* Quick-add chips carry an index into these live arrays rather than
+   embedding item data in HTML — apostrophes and quotes in food names
+   were breaking the old inline-onclick approach. */
+let _qaPins = [];
+let _qaFreq = [];
+
 function quickAddBar() {
-  const pins = getPins();
-  const freq = frequentItems(6);
-  if (!pins.length && !freq.length) return "";
+  _qaPins = getPins();
+  _qaFreq = frequentItems(6);
+  if (!_qaPins.length && !_qaFreq.length) return "";
+  const clip = s => s.length > 22 ? s.slice(0,20)+"…" : s;
   let html = '<div class="qa-wrap">';
-  if (pins.length) {
-    html += '<div class="qa-row">' + pins.map((p,i) =>
-      '<button class="qa pin" onclick="quickAdd('+i+',true)">'+esc(p.name.length>22?p.name.slice(0,20)+"…":p.name)+
-      ' <span>'+p.kcal+'</span><span class="qa-x" onclick="event.stopPropagation();unpin('+i+')">×</span></button>'
+  if (_qaPins.length) {
+    html += '<div class="qa-row">' + _qaPins.map((p,i) =>
+      '<button class="qa pin" data-qa="pin" data-i="'+i+'">'+esc(clip(p.name))+
+      ' <span>'+p.kcal+'</span><span class="qa-x" data-qa="unpin" data-i="'+i+'">×</span></button>'
     ).join("") + '</div>';
   }
-  if (freq.length) {
-    html += '<div class="qa-row">' + freq.map((f) =>
-      '<button class="qa" onclick=\'quickAddFreq('+JSON.stringify(JSON.stringify(f))+')\'>'+
-      esc(f.name.length>22?f.name.slice(0,20)+"…":f.name)+' <span>'+f.kcal+'</span>'+
-      '<span class="qa-pin" onclick=\'event.stopPropagation();pinItem('+JSON.stringify(JSON.stringify(f))+')\'>+pin</span></button>'
+  if (_qaFreq.length) {
+    html += '<div class="qa-row">' + _qaFreq.map((f,i) =>
+      '<button class="qa" data-qa="freq" data-i="'+i+'">'+
+      esc(clip(f.name))+' <span>'+f.kcal+'</span>'+
+      '<span class="qa-pin" data-qa="pin-add" data-i="'+i+'">+pin</span></button>'
     ).join("") + '</div>';
   }
   html += '</div>';
   return html;
 }
 
-function quickAdd(i, isPin) {
-  const item = getPins()[i];
-  if (!item) return;
-  addQuickMeal(item);
+/* One delegated handler on the document catches every quick-add tap. */
+function handleQaClick(e) {
+  const el = e.target.closest("[data-qa]");
+  if (!el) return;
+  const action = el.dataset.qa;
+  const i = parseInt(el.dataset.i, 10);
+  e.stopPropagation();
+  if (action === "pin") { const it = _qaPins[i]; if (it) addQuickMeal(it); }
+  else if (action === "freq") { const it = _qaFreq[i]; if (it) addQuickMeal(it); }
+  else if (action === "unpin") { unpin(i); }
+  else if (action === "pin-add") { const it = _qaFreq[i]; if (it) pinItemObj(it); }
 }
-function quickAddFreq(json) {
-  addQuickMeal(JSON.parse(json));
-}
+document.addEventListener("click", handleQaClick);
+
 function addQuickMeal(item) {
   const entry = ensureDay(selected);
   const meal = { name: item.name, kcal: item.kcal };
@@ -384,8 +415,7 @@ function addQuickMeal(item) {
   catch(e) { showToast(null, {ok:false, text:"Added on screen but SAVE FAILED: "+e.message}); }
   render();
 }
-function pinItem(json) {
-  const item = JSON.parse(json);
+function pinItemObj(item) {
   const pins = getPins();
   if (pins.some(p => p.name === item.name)) return;
   pins.push({ name: item.name, kcal: item.kcal, note: item.note });
@@ -511,12 +541,26 @@ function renderRail() {
   const rail = document.getElementById("rail");
   const dates = railDates();
   rail.innerHTML = "";
-  dates.forEach(d => {
+  dates.forEach((d, idx) => {
     const total = dayTotal(d);
     const burn = dayBurn(d);
     const over = total > getGoal();
     const pct = Math.min(total/getGoal(),1)*100;
     const future = d > todayISO();
+
+    /* If there's a gap before this card (the previous card in the rail isn't
+       the calendar day immediately before this one), offer a + to fill it. */
+    const prevDay = shiftDate(d, -1);
+    const gapBefore = idx > 0 && dates[idx-1] !== prevDay;
+    if (gapBefore) {
+      const ins = document.createElement("button");
+      ins.className = "rail-insert";
+      ins.title = "Add " + fmtDay(prevDay);
+      ins.textContent = "+";
+      ins.onclick = (e) => { e.stopPropagation(); insertDayBefore(d); };
+      rail.appendChild(ins);
+    }
+
     const btn = document.createElement("button");
     btn.className = "day-card" + (d===selected ? " active" : "") + (future ? " future" : "");
     btn.innerHTML =
@@ -530,6 +574,16 @@ function renderRail() {
   });
   const activeCard = rail.querySelector('[data-active="1"]');
   if (activeCard) activeCard.scrollIntoView({inline:"center", block:"nearest"});
+}
+
+/* Create the calendar day immediately before `d` and select it. */
+function insertDayBefore(d) {
+  const target = shiftDate(d, -1);
+  ensureDay(target);
+  selected = target;
+  try { saveDiary(); } catch(e) {}
+  render();
+  showToast(null, {ok:true, text:"Added "+fmtDay(target)+" — logging here now."});
 }
 
 function scrollRail(dir) {
@@ -889,6 +943,41 @@ function answerClarification(option) {
   if (original) submitEntry(original + " (clarification: " + option + ")");
 }
 
+/* Loading bar: shows staged progress so the delay between typing and the
+   ledger updating is legible instead of a mystery pause. */
+let loadTimer = null;
+function startLoad(offline) {
+  const bar = document.getElementById("loadbar");
+  const fill = document.getElementById("loadbar-fill");
+  const label = document.getElementById("loadbar-label");
+  bar.classList.add("on");
+  let pct = 0;
+  const stages = offline
+    ? [[30,"Reading entry…"],[70,"Adding to ledger…"],[95,"Saving…"]]
+    : [[15,"Sending to Claude…"],[45,"Estimating calories…"],[75,"Waiting for response…"],[92,"Saving to ledger…"]];
+  let si = 0;
+  fill.style.width = "8%";
+  label.textContent = stages[0][1];
+  clearInterval(loadTimer);
+  loadTimer = setInterval(() => {
+    /* Creep toward the next stage target so the bar always feels alive
+       even when a network call takes a while. */
+    const target = stages[Math.min(si, stages.length-1)][0];
+    pct += (target - pct) * 0.25;
+    fill.style.width = pct.toFixed(0) + "%";
+    if (pct >= target - 1 && si < stages.length-1) { si++; label.textContent = stages[si][1]; }
+  }, 300);
+}
+function finishLoad(ok) {
+  clearInterval(loadTimer);
+  const bar = document.getElementById("loadbar");
+  const fill = document.getElementById("loadbar-fill");
+  const label = document.getElementById("loadbar-label");
+  fill.style.width = "100%";
+  label.textContent = ok ? "Done ✓" : "Failed";
+  setTimeout(() => { bar.classList.remove("on"); fill.style.width = "0%"; }, 500);
+}
+
 async function handleSend() {
   const text = input.value.trim();
   if (!text || sendBtn.disabled) return;
@@ -898,12 +987,14 @@ async function handleSend() {
 
 async function submitEntry(text) {
   sendBtn.disabled = true; sendBtn.textContent = "…";
+  const key = localStorage.getItem(LS_KEY);
+  startLoad(!key);
   try {
-    const key = localStorage.getItem(LS_KEY);
     const result = key ? await parseWithClaude(text, key) : parseOffline(text);
 
     /* Claude may ask a clarifying question (size / type / quantity). */
     if (result.question && result.question.text && Array.isArray(result.question.options) && result.question.options.length) {
+      finishLoad(true);
       pendingText = text;
       showToast(result.question.text, null, result.question.options.slice(0, 4));
       return;
@@ -912,13 +1003,16 @@ async function submitEntry(text) {
     const applied = applyUpdates(result.updates || []);
     if (applied) {
       const bytes = saveDiary();
+      finishLoad(true);
       showToast(result.reply, {ok:true, text:"Saved & read-back verified at "+fmtTime(new Date())+" ("+bytes.toLocaleString()+" bytes)."});
       if (result.updates[0] && result.updates[0].date) selected = result.updates[0].date;
     } else {
+      finishLoad(true);
       showToast(result.reply || "Nothing to log from that.", null);
     }
     render();
   } catch(e) {
+    finishLoad(false);
     showToast(null, {ok:false, text:"Couldn't log that: "+e.message});
   } finally {
     sendBtn.disabled = false; sendBtn.textContent = "Log";
