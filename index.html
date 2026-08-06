@@ -187,13 +187,32 @@
     font-weight:700; background:transparent; color:var(--ink-dim); border:1px solid var(--blue-dim); }
   .unit-btn.on { background:var(--blue); color:var(--blue-deep); border-color:var(--blue); }
   .ex-target {
-    font-family:var(--mono); font-size:11.5px; color:var(--ink-dim);
-    background:rgba(95,168,232,.09); border-left:2px solid var(--blue-dim);
-    border-radius:4px; padding:5px 8px; margin:5px 0 6px;
+    background:rgba(95,168,232,.12); border:1px solid var(--blue-dim);
+    border-radius:8px; padding:9px 12px; margin:8px 0;
   }
-  .ex-target.coach { color:var(--blue); border-left-color:var(--blue); background:rgba(95,168,232,.16); }
-  .ex-target b { color:var(--ink); font-size:12.5px; }
-  .ex-why { color:var(--ink-dim); font-style:italic; }
+  .ex-target.coach { background:rgba(95,168,232,.2); border-color:var(--blue); }
+  .tg-head { font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--blue); margin-bottom:4px; }
+  .tg-nums { font-family:var(--mono); font-size:14px; color:var(--ink-dim); line-height:1.4; }
+  .tg-nums b { color:var(--ink); font-size:20px; font-weight:700; }
+  .tg-x { color:var(--blue-dim); padding:0 2px; }
+  .tg-why { font-size:12px; color:var(--ink-dim); font-style:italic; margin-top:4px; }
+  .ex-log .lf { display:flex; flex-direction:column; gap:3px; }
+  .ex-log .lf label { font-family:var(--mono); font-size:9.5px; color:var(--ink-dim); text-transform:uppercase; letter-spacing:.08em; }
+  .co-day-sched { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); margin-top:3px; }
+  .sched-badge {
+    font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; padding:5px 9px;
+    border-radius:12px; white-space:nowrap; border:1px solid var(--line); color:var(--ink-dim);
+  }
+  .sched-badge.due { color:var(--blue); border-color:var(--blue); background:rgba(95,168,232,.14); }
+  .sched-badge.over { color:var(--amber); border-color:var(--amber-dim); background:rgba(232,163,61,.12); }
+  .sched-badge.rest { color:var(--ink-dim); opacity:.75; }
+  .nextup {
+    background:linear-gradient(135deg, rgba(95,168,232,.22), rgba(95,168,232,.08));
+    border:1px solid var(--blue); border-radius:12px; padding:14px 16px; margin-bottom:14px;
+  }
+  .nu-l { font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--blue); }
+  .nu-day { font-family:var(--serif); font-size:19px; color:var(--ink); margin:4px 0 3px; }
+  .nu-when { font-family:var(--mono); font-size:12.5px; color:var(--blue); }
   .sync-chip {
     font-family:var(--mono); font-size:10.5px; padding:5px 10px; border-radius:14px;
     background:var(--panel); border:1px solid var(--line); color:var(--ink-dim);
@@ -1003,8 +1022,8 @@ function exCard(e, dayName) {
   const bestDisp = best ? toDisplayWeight(best.weight, setUnitOf(best)) : "";
   const histLine = last
     ? 'Last: ' + (lastDisp ? lastDisp + " " + U : "bodyweight") +
-      (last.reps ? " × " + last.reps + " reps" : "") +
       (last.sets ? " × " + last.sets + " sets" : "") +
+      (last.reps ? " × " + last.reps + " reps" : "") +
       " · " + fmtShort(last.date) +
       (best && weightInKg(best) > weightInKg(last) ? "  (best " + bestDisp + " " + U + ")" : "")
     : "No sets logged yet — log today's to start tracking.";
@@ -1012,11 +1031,12 @@ function exCard(e, dayName) {
   const tgt = targetFor(e);
   const tgtLine = tgt
     ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+'">' +
-      (tgt.src === "coach" ? "◎ Coach target: " : "◎ Target today: ") +
-      '<b>'+tgt.weight+' '+U+'</b>' +
-      (tgt.reps ? ' × '+esc(String(tgt.reps))+' reps' : '') +
-      (tgt.sets ? ' × '+esc(String(tgt.sets))+' sets' : '') +
-      (tgt.why ? '<span class="ex-why"> — '+esc(tgt.why)+'</span>' : '') +
+      '<div class="tg-head">' + (tgt.src === "coach" ? "COACH TARGET — NEXT TIME" : "TARGET — NEXT TIME") + '</div>' +
+      '<div class="tg-nums"><b>'+tgt.weight+'</b> '+U+
+        (tgt.sets ? ' <span class="tg-x">×</span> <b>'+esc(String(tgt.sets))+'</b> sets' : '') +
+        (tgt.reps ? ' <span class="tg-x">×</span> <b>'+esc(String(tgt.reps))+'</b> reps' : '') +
+      '</div>' +
+      (tgt.why ? '<div class="tg-why">'+esc(tgt.why)+'</div>' : '') +
       '</div>'
     : '';
 
@@ -1036,9 +1056,9 @@ function exCard(e, dayName) {
       (e.p ? '<div class="ex-prog">▲ '+esc(e.p)+'</div>' : '') +
       '<div class="ex-hist">'+esc(histLine)+'</div>' +
       '<div class="ex-log">' +
-        '<input id="w-'+id+'" inputmode="decimal" placeholder="'+U+'" value="'+esc(preW)+'">' +
-        '<input id="r-'+id+'" inputmode="numeric" placeholder="reps" value="'+esc(preR)+'">' +
-        '<input id="s-'+id+'" inputmode="numeric" placeholder="sets" value="'+esc(preS)+'">' +
+        '<div class="lf"><label>'+U+'</label><input id="w-'+id+'" inputmode="decimal" value="'+esc(preW)+'"></div>' +
+        '<div class="lf"><label>sets</label><input id="s-'+id+'" inputmode="numeric" value="'+esc(preS)+'"></div>' +
+        '<div class="lf"><label>reps</label><input id="r-'+id+'" inputmode="numeric" value="'+esc(preR)+'"></div>' +
         '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">✓ Did it</button>' +
         '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>' +
         (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' : '') +
@@ -1056,6 +1076,64 @@ document.addEventListener("click", function(e) {
   const u = e.target.closest("[data-ex-undo]");
   if (u) { undoLast(u.dataset.exUndo); return; }
 });
+
+/* ===== Workout scheduling =====
+   With a 4-day rotation trained ~4x/week, each day comes round roughly every
+   4 days. Work out when each was last done and when it's next due. */
+const ROTATION_DAYS = 4;
+
+function dayLastDone(dayName) {
+  const w = getWorkouts();
+  let latest = null;
+  Object.keys(w).forEach(ex => {
+    w[ex].forEach(s => {
+      if (s.done && s.day === dayName) {
+        if (!latest || s.date > latest) latest = s.date;
+      }
+    });
+  });
+  return latest;
+}
+function daysBetween(a, b) {
+  return Math.round((new Date(b+"T12:00:00") - new Date(a+"T12:00:00")) / 86400000);
+}
+function dayScheduleInfo(dayName) {
+  const last = dayLastDone(dayName);
+  if (!last) return { text: "Not done yet", state: "due", badge: "START HERE" };
+  const due = shiftDate(last, ROTATION_DAYS);
+  const diff = daysBetween(todayISO(), due);
+  const ago = daysBetween(last, todayISO());
+  const agoText = ago === 0 ? "today" : ago === 1 ? "yesterday" : ago + " days ago";
+  if (diff < 0) return { text: "Last done " + agoText, state: "over", badge: "OVERDUE " + Math.abs(diff) + "D" };
+  if (diff === 0) return { text: "Last done " + agoText, state: "due", badge: "DUE TODAY" };
+  return { text: "Last done " + agoText, state: "rest", badge: "NEXT IN " + diff + "D" };
+}
+/* Which day should he train next? The one longest since it was done. */
+function nextUpDay() {
+  let best = null, bestScore = -Infinity;
+  COACH_PLAN.forEach((d, i) => {
+    const last = dayLastDone(d.name);
+    const score = last ? daysBetween(last, todayISO()) : 999;
+    if (score > bestScore) { bestScore = score; best = { day: d, idx: i, last: last }; }
+  });
+  return best;
+}
+/* Banner shown right after finishing a session. */
+function nextUpPanel() {
+  const w = getWorkouts();
+  const anyLogged = Object.values(w).some(arr => arr.some(s => s.done));
+  if (!anyLogged) return "";
+  const up = nextUpDay();
+  if (!up) return "";
+  const info = dayScheduleInfo(up.day.name);
+  const due = up.last ? shiftDate(up.last, ROTATION_DAYS) : todayISO();
+  const diff = up.last ? daysBetween(todayISO(), due) : 0;
+  const when = !up.last ? "whenever you're ready"
+    : diff <= 0 ? "ready now" : fmtDay(due) + " (in " + diff + " day" + (diff===1?"":"s") + ")";
+  return '<div class="nextup"><div class="nu-l">Next session</div>' +
+    '<div class="nu-day">'+esc(up.day.name)+'</div>' +
+    '<div class="nu-when">'+esc(when)+'</div></div>';
+}
 
 /* Shows exercises left unticked last time so they get picked up next session. */
 function carryForwardPanel() {
@@ -1470,6 +1548,7 @@ function renderCoach() {
       (savedPlan ? '<div class="co-plan-out" style="margin-top:12px;border-top:1px solid var(--blue-dim);padding-top:12px">'+esc(savedPlan)+'</div>' : '') +
     '</div>' +
 
+    nextUpPanel() +
     progressionPanel() +
 
     '<div class="co-box"><div class="t">Ask your coach</div>' +
@@ -1486,17 +1565,20 @@ function renderCoach() {
       '<div class="co-sub" style="margin-bottom:10px">Tap a day to expand. Each card shows a <b>target</b> — automatic progression from your last session, or your coach\u2019s number once you\u2019ve tapped <b>Set target weights</b>. The boxes prefill with the target, so just adjust if reality differed, then hit <b>✓ Did it</b>. <b>Skip</b> carries the exercise forward. AZ heat note: incline walks replace outdoor runs guilt-free June–Sept; keep the 1–2 monthly 5Ks for cooler mornings.</div>' +
     '</div>' +
     carryForwardPanel() +
-    COACH_PLAN.map((day, di) =>
-      '<div class="co-day" id="co-day-'+di+'">' +
+    COACH_PLAN.map((day, di) => {
+      const sched = dayScheduleInfo(day.name);
+      return '<div class="co-day" id="co-day-'+di+'">' +
         '<div class="co-day-head" onclick="toggleDay('+di+')">' +
-          '<span class="n">'+day.name+'</span><span class="m">'+day.meta+'</span>' +
+          '<div><span class="n">'+day.name+'</span>' +
+            '<div class="co-day-sched">'+esc(sched.text)+' · '+day.meta+'</div></div>' +
+          '<span class="sched-badge '+sched.state+'">'+sched.badge+'</span>' +
         '</div>' +
         '<div class="co-day-body">' +
           day.ex.map(e => exCard(e, day.name)).join("") +
           '<div class="btn-row"><button class="co-btn" onclick="logWorkout('+di+')">Done — log ~'+day.burn+' kcal burn to today</button></div>' +
         '</div>' +
-      '</div>'
-    ).join("") +
+      '</div>';
+    }).join("") +
     '<div class="co-sub" style="margin:4px 0 10px">General fitness guidance, not medical advice. Ease in if anything hurts beyond normal muscle burn.</div>';
 
   const cq = document.getElementById("coach-q");
@@ -2297,10 +2379,15 @@ render();
 refreshSyncChip();
 /* Sync on open so you always start from the latest across devices. */
 if (ghToken()) syncNow(true);
-/* Sync again when the app is backgrounded or closed. */
+/* Sync when leaving AND when coming back — an already-open tab used to sit
+   there stale, which looked like the Coach tab not syncing at all. */
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden" && ghToken()) syncNow(true);
+  if (!ghToken()) return;
+  if (document.visibilityState === "hidden") syncNow(true);
+  else syncNow(true);
 });
+/* Also poll every 60s so a device left open on screen stays current. */
+setInterval(() => { if (ghToken() && document.visibilityState === "visible" && !syncing) syncNow(true); }, 60000);
 </script>
 </body>
 </html>
