@@ -496,7 +496,15 @@ async function relinkSync() {
   setSyncStatus("Looking for sync files…");
   try {
     const all = await findSyncGists();
-    if (!all.length) { setSyncStatus("No sync file found — tap Sync now to create one.", false); return; }
+    if (!all.length) {
+      /* Everything was deleted — start clean from this device's data. */
+      localStorage.removeItem(LS_GISTID);
+      lastPushedFingerprint = "";
+      setSyncStatus("No sync file found — creating a fresh one from this device…");
+      await syncNow();
+      showToast(null,{ok:true,text:"New sync file created. Now open the app on your other device."});
+      return;
+    }
 
     /* Pull each one and merge them all into this device. */
     let dead = getDeleted();
@@ -732,8 +740,33 @@ async function syncNow(silent) {
         mergedDays = mergeIntoLocal(remote).days;
       }
     } catch(e) {
-      /* A missing gist just means we upload fresh below. */
-      if (!/404/.test(e.message)) throw e;
+      if (/404/.test(e.message)) {
+        /* The stored file was deleted. Find another, or make a fresh one,
+           rather than failing forever. */
+        setSyncStatus("Sync file was missing — reconnecting…");
+        localStorage.removeItem(LS_GISTID);
+        id = await findSyncGist();
+        if (id) {
+          localStorage.setItem(LS_GISTID, id);
+          const data2 = await ghFetch("https://api.github.com/gists/" + id);
+          const f2 = data2.files && data2.files[GIST_FILE];
+          if (f2 && f2.content) mergedDays = mergeIntoLocal(JSON.parse(f2.content)).days;
+        } else {
+          const created = await ghFetch("https://api.github.com/gists", {
+            method: "POST",
+            body: JSON.stringify({
+              description: "The Daily Ledger — private data sync (do not share)",
+              public: false,
+              files: { [GIST_FILE]: { content: JSON.stringify(buildSyncPayload(), null, 1) } },
+            }),
+          });
+          id = created.id;
+          localStorage.setItem(LS_GISTID, id);
+          lastPushedFingerprint = payloadFingerprint();
+        }
+      } else {
+        throw e;
+      }
     }
 
     /* 3. Push the merged result back up — but only if something changed.
