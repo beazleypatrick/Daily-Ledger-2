@@ -213,6 +213,14 @@
   .nu-l { font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--blue); }
   .nu-day { font-family:var(--serif); font-size:19px; color:var(--ink); margin:4px 0 3px; }
   .nu-when { font-family:var(--mono); font-size:12.5px; color:var(--blue); }
+  .sync-banner {
+    background:rgba(224,108,91,.14); border:1px solid var(--red); border-radius:10px;
+    padding:12px 14px; margin-bottom:12px; font-size:13.5px; line-height:1.5; color:var(--ink);
+  }
+  .sync-banner b { color:var(--red); }
+  .sb-detail { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); margin-top:6px; }
+  .sb-x { margin-top:8px; background:none; border:1px solid var(--line); color:var(--ink-dim);
+    border-radius:7px; padding:5px 12px; font-size:11.5px; cursor:pointer; font-family:var(--mono); }
   .sync-chip {
     font-family:var(--mono); font-size:10.5px; padding:5px 10px; border-radius:14px;
     background:var(--panel); border:1px solid var(--line); color:var(--ink-dim);
@@ -420,7 +428,20 @@ function applySyncPayload(p) {
   selected = pickDefaultDate();
 }
 
+/* Fingerprint of the local data, so we only upload when something really
+   changed. Uploading on every poll is what triggered GitHub's 403 throttle. */
+function payloadFingerprint() {
+  const p = buildSyncPayload();
+  delete p.updatedAt; delete p.device;
+  return strHash(JSON.stringify(p));
+}
+let lastPushedFingerprint = localStorage.getItem("ledger-last-fp") || "";
+let rateLimitedUntil = 0;
+
 async function ghFetch(url, opts) {
+  if (Date.now() < rateLimitedUntil) {
+    throw new Error("GitHub is rate-limiting; pausing until " + fmtTime(new Date(rateLimitedUntil)) + ".");
+  }
   const res = await fetch(url, Object.assign({
     headers: {
       "Authorization": "Bearer " + ghToken(),
@@ -431,9 +452,24 @@ async function ghFetch(url, opts) {
   if (!res.ok) {
     let msg = "GitHub error " + res.status;
     if (res.status === 401) msg += " — token rejected. Check it was copied fully and has 'gist' permission.";
-    if (res.status === 404) msg += " — gist not found. Try 'Create new sync gist'.";
+    if (res.status === 404) msg += " — sync file not found. Tap 'Fix sync link'.";
+    if (res.status === 403 || res.status === 429) {
+      /* Back off for a few minutes rather than hammering. */
+      const reset = res.headers.get("x-ratelimit-reset");
+      const retry = res.headers.get("retry-after");
+      let waitMs = 5 * 60000;
+      if (retry) waitMs = parseInt(retry,10) * 1000;
+      else if (reset) waitMs = Math.max(0, parseInt(reset,10)*1000 - Date.now());
+      rateLimitedUntil = Date.now() + Math.min(waitMs, 15*60000);
+      msg = "GitHub is rate-limiting requests (" + res.status + "). Syncing paused until " +
+            fmtTime(new Date(rateLimitedUntil)) + ". Your data is safe on this device.";
+      if (/github_pat_/.test(ghToken())) {
+        msg += " Note: fine-grained tokens often can't use Gists — a classic token with the 'gist' box ticked works better.";
+      }
+    }
     throw new Error(msg);
   }
+  if (opts && opts.method === "DELETE") return {};
   return res.json();
 }
 
@@ -479,17 +515,17 @@ async function relinkSync() {
     diary = loadDiary();
     selected = pickDefaultDate();
 
-    /* Keep the newest, delete the rest so this can't recur. */
+    /* Point every device at the newest file. Older strays are left in place
+       rather than deleted — deletion needs broader permissions and adds
+       requests, and once both devices point here they stop being written to. */
     const keep = all[0].id;
     localStorage.setItem(LS_GISTID, keep);
-    for (const g of all.slice(1)) {
-      try { await ghFetch("https://api.github.com/gists/" + g.id, { method: "DELETE" }); } catch(e) {}
-    }
-    localStorage.setItem(LS_SYNCAT, "1970-01-01T00:00:00.000Z"); // force a full push
+    lastPushedFingerprint = ""; // force one upload of the merged result
+    localStorage.setItem(LS_SYNCAT, "1970-01-01T00:00:00.000Z");
     await syncNow();
     render();
     showToast(null,{ok:true,text: all.length > 1
-      ? "Found " + all.length + " separate sync files — merged into one. Now do the same on your other device."
+      ? "Merged " + all.length + " sync files into one. Now tap 'Fix sync link' on your other device too."
       : "Relinked to your sync file."});
   } catch(e) {
     setSyncStatus(e.message, false);
@@ -700,15 +736,22 @@ async function syncNow(silent) {
       if (!/404/.test(e.message)) throw e;
     }
 
-    /* 3. Push the merged result back up. */
-    setSyncStatus("Uploading…");
-    await ghFetch("https://api.github.com/gists/" + id, {
-      method: "PATCH",
-      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(buildSyncPayload(), null, 1) } } }),
-    });
+    /* 3. Push the merged result back up — but only if something changed.
+       Uploading unchanged data on every poll is what got us throttled. */
+    const fp = payloadFingerprint();
+    if (fp !== lastPushedFingerprint) {
+      setSyncStatus("Uploading…");
+      await ghFetch("https://api.github.com/gists/" + id, {
+        method: "PATCH",
+        body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify(buildSyncPayload(), null, 1) } } }),
+      });
+      lastPushedFingerprint = fp;
+      localStorage.setItem("ledger-last-fp", fp);
+    }
 
     localStorage.setItem(LS_SYNCAT, new Date().toISOString());
     render();
+    clearSyncBanner();
     const c = syncCounts();
     refreshSyncChip();
     setSyncStatus("Synced at " + fmtTime(new Date()) + " — " + c.days + " days, " + c.sets + " logged sets.", true);
@@ -717,8 +760,8 @@ async function syncNow(silent) {
   } catch(e) {
     setSyncStatus(e.message, false);
     setSyncChip("err", "⚠ sync failed");
-    /* Background failures used to vanish silently; always surface them. */
-    showToast(null, {ok:false, text:"Sync failed: " + e.message + " — tap the sync chip to retry."});
+    lastSyncError = e.message;
+    showSyncBanner(e.message);
     return false;
   } finally {
     syncing = false;
@@ -738,6 +781,41 @@ function queuePush() {
 }
 /* The header chip makes sync state visible from every tab — background
    failures used to be invisible unless you happened to be on the Data tab. */
+let lastSyncError = "";
+/* A persistent, readable explanation on the main screen — the red chip alone
+   didn't say what to actually do about it. */
+function showSyncBanner(msg) {
+  let el = document.getElementById("sync-banner");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "sync-banner";
+    el.className = "sync-banner";
+    const wrap = document.querySelector(".wrap");
+    if (wrap) wrap.insertBefore(el, wrap.children[1] || null);
+  }
+  let advice;
+  if (/403|rate.?limit/i.test(msg)) {
+    advice = /github_pat_/.test(ghToken())
+      ? "Your token starts with github_pat_ — that type cannot use sync. You need a CLASSIC token (starts ghp_)."
+      : "GitHub is throttling requests. It clears itself and nothing is lost. If it persists, tap 'Test token' in the Data tab.";
+  } else if (/401|rejected/i.test(msg)) {
+    advice = "Your GitHub token was rejected. Make a new classic token with 'gist' ticked, then paste it in the Data tab.";
+  } else if (/404|not found/i.test(msg)) {
+    advice = "Sync file missing. Tap 'Fix sync link' in the Data tab.";
+  } else {
+    advice = "Tap 'Test token' in the Data tab to find out why.";
+  }
+  el.innerHTML = '<b>Sync isn\u2019t working.</b> ' + esc(advice) +
+    '<div class="sb-detail">' + esc(msg) + '</div>' +
+    '<button class="sb-x" onclick="clearSyncBanner()">Dismiss</button>';
+  el.style.display = "block";
+}
+function clearSyncBanner() {
+  const el = document.getElementById("sync-banner");
+  if (el) el.remove();
+  lastSyncError = "";
+}
+
 function setSyncChip(state, text) {
   const el = document.getElementById("sync-chip");
   if (!el) return;
@@ -751,6 +829,10 @@ function syncCounts() {
 }
 function refreshSyncChip() {
   if (!ghToken()) { setSyncChip("off", "sync off"); return; }
+  if (Date.now() < rateLimitedUntil) {
+    setSyncChip("err", "⏸ paused till " + fmtTime(new Date(rateLimitedUntil)));
+    return;
+  }
   const at = localStorage.getItem(LS_SYNCAT);
   const c = syncCounts();
   setSyncChip("ok", "⟳ " + (at ? fmtTime(new Date(at)) : "ready") + " · " + c.days + "d " + c.sets + " sets");
@@ -801,6 +883,59 @@ async function syncDiagnose() {
     lines.push("ERROR: " + e.message);
   }
   out.textContent = lines.join("\n");
+}
+
+/* Tests the token directly against GitHub and explains, in plain language,
+   exactly what is wrong. Reads the scopes header so we can tell a missing
+   'gist' permission from a bad token from a wrong token type. */
+async function testToken() {
+  const out = document.getElementById("sync-diag");
+  const t = ghToken();
+  if (out) out.style.display = "block";
+  const say = (s) => { if (out) out.textContent = s; };
+  if (!t) { say("No token saved on this device. Paste one in the box above and tap Save token."); return; }
+  say("Testing token with GitHub…");
+  try {
+    const res = await fetch("https://api.github.com/user", {
+      headers: { "Authorization": "Bearer " + t, "Accept": "application/vnd.github+json" },
+    });
+    const scopes = res.headers.get("x-oauth-scopes");
+    if (res.status === 401) {
+      say("RESULT: GitHub rejected this token (401).\n\nIt is expired, mistyped, or was only partly copied.\nFix: make a NEW classic token and paste the whole thing.\ngithub.com > Settings > Developer settings > Personal access tokens > Tokens (classic) > Generate new token (classic) > tick 'gist'.");
+      return;
+    }
+    if (res.status === 403) {
+      say("RESULT: GitHub refused the request (403).\n\nUsually one of:\n1. This is a FINE-GRAINED token (starts github_pat_). Those cannot use Gists. You need a CLASSIC token (starts ghp_).\n2. Rate limit still cooling off — wait 10 minutes and retry.\n\nYour token starts: " + t.slice(0, 11) + "...");
+      return;
+    }
+    if (!res.ok) { say("RESULT: GitHub returned " + res.status + ". Try again shortly."); return; }
+    const user = await res.json();
+
+    /* Classic tokens report scopes; fine-grained ones return an empty header. */
+    let verdict = "Account: " + user.login + "\nToken type: " + (/^ghp_/.test(t) ? "classic" : /^github_pat_/.test(t) ? "FINE-GRAINED" : "unknown") + "\n";
+    if (scopes === null || scopes === "") {
+      verdict += "Permissions: none reported.\n\nThis is the fine-grained token problem — GitHub's Gists API only works with CLASSIC tokens.\nFix: create a classic token with the 'gist' box ticked, then paste it here.";
+      say(verdict); return;
+    }
+    verdict += "Permissions: " + scopes + "\n";
+    if (!/\bgist\b/.test(scopes)) {
+      verdict += "\nPROBLEM: the 'gist' permission is missing. Sync cannot work.\nFix: create a new classic token and tick the 'gist' checkbox.";
+      say(verdict); return;
+    }
+    /* Token is good — confirm the Gists API actually answers. */
+    const g = await fetch("https://api.github.com/gists?per_page=1", {
+      headers: { "Authorization": "Bearer " + t, "Accept": "application/vnd.github+json" },
+    });
+    if (!g.ok) {
+      verdict += "\nToken looks right, but the Gists API returned " + g.status + ".";
+      if (g.status === 403) verdict += " That is a rate limit — wait 10 minutes.";
+      say(verdict); return;
+    }
+    verdict += "\nOK: token is valid and can use Gists. Tap 'Sync now'.";
+    say(verdict);
+  } catch(e) {
+    say("Could not reach GitHub: " + e.message + "\n\nCheck the device is online.");
+  }
 }
 
 function saveGhToken() {
@@ -2257,6 +2392,7 @@ function renderData() {
       '<input type="password" id="gh-token" placeholder="ghp_… or github_pat_…" value="'+esc(ghToken())+'"></div>' +
       '<div class="btn-row">' +
         '<button class="btn primary" onclick="saveGhToken()">Save token</button>' +
+        (ghToken() ? '<button class="btn primary" onclick="testToken()">Test token</button>' : '') +
         (ghToken() ? '<button class="btn" onclick="relinkSync()">Fix sync link</button>' : '') +
         (ghToken() ? '<button class="btn" onclick="syncDiagnose()">Check sync</button>' : '') +
         (ghToken() ? '<button class="btn danger" onclick="disableSync()">Turn off sync</button>' : '') +
@@ -2592,7 +2728,14 @@ document.addEventListener("visibilitychange", () => {
   if (ghToken()) syncNow(true);
 });
 /* Poll while on screen so a device left open stays current without touching it. */
-setInterval(() => { if (ghToken() && document.visibilityState === "visible" && !syncing) syncNow(true); }, 20000);
+/* Poll while on screen. 45s with upload-only-on-change keeps us well inside
+   GitHub's limits. */
+setInterval(() => {
+  if (!ghToken() || syncing) return;
+  if (document.visibilityState !== "visible") return;
+  if (Date.now() < rateLimitedUntil) { refreshSyncChip(); return; }
+  syncNow(true);
+}, 45000);
 </script>
 </body>
 </html>
