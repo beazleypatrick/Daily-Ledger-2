@@ -370,6 +370,7 @@ const LS_TARGETS = "ledger-targets";
 const LS_GHTOKEN = "ledger-gh-token";
 const LS_GISTID  = "ledger-gist-id";
 const LS_SYNCAT  = "ledger-synced-at";
+const LS_DELETED = "ledger-deleted";
 
 /* ================= CLOUD SYNC (private GitHub Gist) =================
    localStorage is per-device, so phone and computer never see each other.
@@ -388,6 +389,7 @@ const SYNC_KEYS = [
   ["profile", LS_PROFILE],
   ["bodymap", LS_BODYMAP],
   ["coachplan",LS_COACHPLAN],
+  ["deleted", LS_DELETED],
 ];
 const GIST_FILE = "daily-ledger.json";
 
@@ -448,41 +450,115 @@ async function findSyncGist() {
 /* ===== Merge =====
    Combines remote and local rather than overwriting, so it doesn't matter
    which device syncs first. */
-function mergeDiaries(localD, remoteD) {
+/* ===== Item identity =====
+   Every meal and exercise carries a stable id so merging can work item by
+   item instead of guessing which device's copy of a day is "better".
+   Deletions are recorded as tombstones so they propagate instead of being
+   undone by the other device re-adding the item. */
+function newId() {
+  return "i" + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+}
+function strHash(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+  return Math.abs(h).toString(36);
+}
+/* Legacy items (logged before ids existed) get a deterministic id derived
+   from their content and position, so both devices generate the SAME id for
+   the same item and it doesn't duplicate on first merge. */
+function legacyId(date, kind, idx, item) {
+  return "L" + strHash(date + "|" + kind + "|" + idx + "|" + (item.name||"") + "|" + (item.kcal||0));
+}
+function ensureItemIds() {
+  let changed = false;
+  Object.keys(diary).forEach(d => {
+    const day = diary[d];
+    if (!day) return;
+    ["meals","exercise"].forEach(kind => {
+      (day[kind] || []).forEach((it, idx) => {
+        if (!it.id) { it.id = legacyId(d, kind, idx, it); changed = true; }
+      });
+    });
+  });
+  return changed;
+}
+
+/* Tombstones: {id: isoTimestamp}. Pruned after 120 days. */
+function getDeleted() {
+  try { return JSON.parse(localStorage.getItem(LS_DELETED)) || {}; } catch(e) { return {}; }
+}
+function markDeleted(ids) {
+  const t = getDeleted();
+  const now = new Date().toISOString();
+  (Array.isArray(ids) ? ids : [ids]).forEach(id => { if (id) t[id] = now; });
+  localStorage.setItem(LS_DELETED, JSON.stringify(pruneTombstones(t)));
+  queuePush();
+}
+function pruneTombstones(t) {
+  const cutoff = Date.now() - 120*86400000;
+  const out = {};
+  Object.keys(t).forEach(id => { if (new Date(t[id]).getTime() > cutoff) out[id] = t[id]; });
+  return out;
+}
+function mergeTombstones(a, b) {
+  const out = Object.assign({}, a || {});
+  Object.keys(b || {}).forEach(id => { if (!out[id]) out[id] = b[id]; });
+  return pruneTombstones(out);
+}
+
+/* Union two item lists by id, dropping anything deleted on either device. */
+function mergeItems(localList, remoteList, dead) {
+  const byId = new Map();
+  (localList || []).forEach(it => { if (it && it.id) byId.set(it.id, it); });
+  (remoteList || []).forEach(it => { if (it && it.id && !byId.has(it.id)) byId.set(it.id, it); });
+  const out = [];
+  byId.forEach((it, id) => { if (!dead[id]) out.push(it); });
+  return out;
+}
+
+function mergeDiaries(localD, remoteD, dead) {
   const out = {};
   const dates = new Set([...Object.keys(localD||{}), ...Object.keys(remoteD||{})]);
   dates.forEach(d => {
-    const L = localD && localD[d], R = remoteD && remoteD[d];
-    if (!L) { out[d] = R; return; }
-    if (!R) { out[d] = L; return; }
-    /* Both devices have this day. Keep the fuller record — the side with more
-       entries is the one that did the logging. Ties keep local. */
-    const lc = (L.meals||[]).length + (L.exercise||[]).length;
-    const rc = (R.meals||[]).length + (R.exercise||[]).length;
-    const win = rc > lc ? R : L;
+    const L = (localD && localD[d]) || null;
+    const R = (remoteD && remoteD[d]) || null;
+    const meals = mergeItems(L && L.meals, R && R.meals, dead);
+    const exercise = mergeItems(L && L.exercise, R && R.exercise, dead);
+    /* A day deleted wholesale is tombstoned by its date key. */
+    if (dead["DAY:" + d]) return;
+    /* Drop days that ended up empty and weren't explicitly kept. */
+    if (!meals.length && !exercise.length && !(L && (L.weightKg != null || L.bodyFatPct != null))
+        && !(R && (R.weightKg != null || R.bodyFatPct != null))) {
+      /* Preserve an intentionally-empty day only if a device still lists it. */
+      if (!L && !R) return;
+    }
     out[d] = {
-      meals: win.meals || [],
-      exercise: win.exercise || [],
-      weightKg: L.weightKg != null ? L.weightKg : R.weightKg,
-      bodyFatPct: L.bodyFatPct != null ? L.bodyFatPct : R.bodyFatPct,
+      meals: meals,
+      exercise: exercise,
+      weightKg: (L && L.weightKg != null) ? L.weightKg : (R ? R.weightKg : null),
+      bodyFatPct: (L && L.bodyFatPct != null) ? L.bodyFatPct : (R ? R.bodyFatPct : null),
     };
   });
   return out;
 }
-function mergeWorkouts(localW, remoteW) {
+function mergeWorkouts(localW, remoteW, dead) {
   const out = {};
+  dead = dead || {};
   const names = new Set([...Object.keys(localW||{}), ...Object.keys(remoteW||{})]);
   names.forEach(n => {
     const seen = new Set();
     const combined = [];
     [...((localW||{})[n]||[]), ...((remoteW||{})[n]||[])].forEach(s => {
-      const sig = [s.date, s.weight, s.unit, s.reps, s.sets, s.done].join("|");
-      if (seen.has(sig)) return;
+      /* Sets get a deterministic signature so the same set logged once isn't
+         duplicated, and a removed set stays removed. */
+      const sig = s.id || ("W" + strHash(n + "|" + [s.date,s.weight,s.unit,s.reps,s.sets,s.done].join("|")));
+      if (seen.has(sig) || dead[sig]) return;
       seen.add(sig);
+      s.id = sig;
       combined.push(s);
     });
     combined.sort((a,b) => (a.date||"").localeCompare(b.date||""));
-    out[n] = combined;
+    if (combined.length) out[n] = combined;
   });
   return out;
 }
@@ -496,10 +572,15 @@ function mergeIntoLocal(remote) {
   const localAt = localStorage.getItem(LS_SYNCAT) ? new Date(localStorage.getItem(LS_SYNCAT)).getTime() : 0;
   const remoteNewer = remoteAt > localAt;
 
+  /* Deletions from either device combine, so a removal on the phone isn't
+     resurrected by the computer still holding the item. */
+  const dead = mergeTombstones(getDeleted(), parseOr(remote.deleted, {}));
+  localStorage.setItem(LS_DELETED, JSON.stringify(dead));
+
   /* Diary and workouts merge item-by-item so nothing is lost either way. */
-  const mergedDiary = mergeDiaries(parseOr(localStorage.getItem(LS_DIARY), {}), parseOr(remote.diary, {}));
+  const mergedDiary = mergeDiaries(parseOr(localStorage.getItem(LS_DIARY), {}), parseOr(remote.diary, {}), dead);
   localStorage.setItem(LS_DIARY, JSON.stringify(mergedDiary));
-  const mergedW = mergeWorkouts(parseOr(localStorage.getItem(LS_WORKOUTS), {}), parseOr(remote.workouts, {}));
+  const mergedW = mergeWorkouts(parseOr(localStorage.getItem(LS_WORKOUTS), {}), parseOr(remote.workouts, {}), dead);
   localStorage.setItem(LS_WORKOUTS, JSON.stringify(mergedW));
 
   /* Single-value settings: newer side wins. */
@@ -603,7 +684,7 @@ function queuePush() {
   if (!ghToken()) return;
   setSyncChip("busy", "⟳ pending…");
   clearTimeout(pushTimer);
-  pushTimer = setTimeout(() => syncNow(true), 3000);
+  pushTimer = setTimeout(() => syncNow(true), 1200);
 }
 /* The header chip makes sync state visible from every tab — background
    failures used to be invisible unless you happened to be on the Data tab. */
@@ -784,7 +865,13 @@ function pickDefaultDate() {
   return dates.includes(todayISO()) ? todayISO() : (dates[dates.length-1] || todayISO());
 }
 function ensureDay(d) {
-  if (!diary[d]) diary[d] = { weightKg: null, bodyFatPct: null, meals: [], exercise: [] };
+  if (!diary[d]) {
+    diary[d] = { weightKg: null, bodyFatPct: null, meals: [], exercise: [] };
+    /* Re-creating a previously deleted day clears its tombstone, otherwise
+       the merge would keep wiping it. */
+    const t = getDeleted();
+    if (t["DAY:" + d]) { delete t["DAY:" + d]; localStorage.setItem(LS_DELETED, JSON.stringify(t)); }
+  }
   if (!diary[d].exercise) diary[d].exercise = []; // older saved days
   return diary[d];
 }
@@ -893,7 +980,7 @@ document.addEventListener("click", handleQaClick);
 
 function addQuickMeal(item) {
   const entry = ensureDay(selected);
-  const meal = { name: item.name, kcal: item.kcal };
+  const meal = { id: newId(), name: item.name, kcal: item.kcal };
   if (item.note) meal.note = item.note;
   entry.meals.push(meal);
   try { saveDiary(); showToast(null, {ok:true, text:'Added "'+item.name+'" ('+item.kcal+' kcal) to '+fmtDay(selected)+'.'}); }
@@ -974,6 +1061,7 @@ function logSet(exName, dayName) {
   const w = getWorkouts();
   if (!w[exName]) w[exName] = [];
   w[exName].push({
+    id: newId(),
     date: todayISO(),
     day: dayName,
     weight: wEl ? wEl.value.trim() : "",
@@ -996,7 +1084,13 @@ function skipSet(exName, dayName) {
 }
 function undoLast(exName) {
   const w = getWorkouts();
-  if (w[exName] && w[exName].length) w[exName].pop();
+  if (w[exName] && w[exName].length) {
+    const gone = w[exName].pop();
+    if (gone) {
+      const sig = gone.id || ("W" + strHash(exName + "|" + [gone.date,gone.weight,gone.unit,gone.reps,gone.sets,gone.done].join("|")));
+      markDeleted(sig);
+    }
+  }
   try { saveWorkouts(w); } catch(e) {}
   renderCoach();
 }
@@ -1602,7 +1696,7 @@ function toggleDay(di) {
 function logWorkout(di) {
   const day = COACH_PLAN[di];
   const entry = ensureDay(todayISO());
-  entry.exercise.push({ name: "Gym — " + day.name.replace(/^Day \d+ — /,""), kcal: day.burn });
+  entry.exercise.push({ id: newId(), name: "Gym — " + day.name.replace(/^Day \d+ — /,""), kcal: day.burn });
   selected = todayISO();
   try { saveDiary(); showToast(null, {ok:true, text:day.name+" logged — "+day.burn+" kcal burn added to today."}); }
   catch(e) { showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: "+e.message}); }
@@ -1890,14 +1984,16 @@ function chip(l,v,tone) {
 
 function removeMeal(date, i) {
   if (!confirm("Remove \"" + diary[date].meals[i].name + "\"?")) return;
-  diary[date].meals.splice(i,1);
+  const gone = diary[date].meals.splice(i,1)[0];
+  if (gone && gone.id) markDeleted(gone.id);
   try { saveDiary(); showToast(null, {ok:true, text:"Removed & saved."}); }
   catch(e) { showToast(null, {ok:false, text:"Removed on screen but SAVE FAILED: "+e.message}); }
   render();
 }
 function removeExercise(date, i) {
   if (!confirm("Remove \"" + diary[date].exercise[i].name + "\"?")) return;
-  diary[date].exercise.splice(i,1);
+  const gone = diary[date].exercise.splice(i,1)[0];
+  if (gone && gone.id) markDeleted(gone.id);
   try { saveDiary(); showToast(null, {ok:true, text:"Removed & saved."}); }
   catch(e) { showToast(null, {ok:false, text:"Removed on screen but SAVE FAILED: "+e.message}); }
   render();
@@ -1918,6 +2014,10 @@ function moveItem(kind, i, delta) {
   const target = shiftDate(selected, delta);
   const dest = ensureDay(target);
   list.splice(i, 1);
+  /* Treat a move as delete-then-add so the other device doesn't end up with
+     the item on both dates. */
+  if (item.id) markDeleted(item.id);
+  item.id = newId();
   (kind === "meal" ? dest.meals : dest.exercise).push(item);
   try {
     saveDiary();
@@ -1935,6 +2035,14 @@ function deleteDay(btn) {
     btn.textContent = "Tap again to delete " + fmtDay(selected);
     return;
   }
+  /* Tombstone the day and everything in it so the deletion syncs. */
+  const day = diary[selected];
+  const ids = ["DAY:" + selected];
+  if (day) {
+    (day.meals||[]).forEach(m => { if (m.id) ids.push(m.id); });
+    (day.exercise||[]).forEach(m => { if (m.id) ids.push(m.id); });
+  }
+  markDeleted(ids);
   delete diary[selected];
   const dates = Object.keys(diary).sort();
   selected = dates.length ? (dates.includes(todayISO()) ? todayISO() : dates[dates.length-1]) : todayISO();
@@ -2291,14 +2399,14 @@ function applyUpdates(updates) {
     }
     if (Array.isArray(u.addMeals)) for (const m of u.addMeals) {
       if (m && typeof m.name==="string" && typeof m.kcal==="number") {
-        const meal = { name: m.name, kcal: Math.round(m.kcal) };
+        const meal = { id: newId(), name: m.name, kcal: Math.round(m.kcal) };
         if (m.note) meal.note = m.note;
         entry.meals.push(meal); touched = true;
       }
     }
     if (Array.isArray(u.addExercise)) for (const m of u.addExercise) {
       if (m && typeof m.name==="string" && typeof m.kcal==="number") {
-        const ex = { name: m.name, kcal: Math.abs(Math.round(m.kcal)) };
+        const ex = { id: newId(), name: m.name, kcal: Math.abs(Math.round(m.kcal)) };
         if (m.note) ex.note = m.note;
         entry.exercise.push(ex); touched = true;
       }
@@ -2375,6 +2483,8 @@ try {
 } catch(e) {
   showToast(null,{ok:false,text:"WARNING: this browser blocked storage — data will NOT persist. "+e.message});
 }
+/* Give any pre-existing items stable ids before the first merge runs. */
+if (ensureItemIds()) { try { localStorage.setItem(LS_DIARY, JSON.stringify(diary)); } catch(e) {} }
 render();
 refreshSyncChip();
 /* Sync on open so you always start from the latest across devices. */
@@ -2382,12 +2492,10 @@ if (ghToken()) syncNow(true);
 /* Sync when leaving AND when coming back — an already-open tab used to sit
    there stale, which looked like the Coach tab not syncing at all. */
 document.addEventListener("visibilitychange", () => {
-  if (!ghToken()) return;
-  if (document.visibilityState === "hidden") syncNow(true);
-  else syncNow(true);
+  if (ghToken()) syncNow(true);
 });
-/* Also poll every 60s so a device left open on screen stays current. */
-setInterval(() => { if (ghToken() && document.visibilityState === "visible" && !syncing) syncNow(true); }, 60000);
+/* Poll while on screen so a device left open stays current without touching it. */
+setInterval(() => { if (ghToken() && document.visibilityState === "visible" && !syncing) syncNow(true); }, 20000);
 </script>
 </body>
 </html>
