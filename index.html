@@ -194,6 +194,15 @@
   .ex-target.coach { color:var(--blue); border-left-color:var(--blue); background:rgba(95,168,232,.16); }
   .ex-target b { color:var(--ink); font-size:12.5px; }
   .ex-why { color:var(--ink-dim); font-style:italic; }
+  .sync-chip {
+    font-family:var(--mono); font-size:10.5px; padding:5px 10px; border-radius:14px;
+    background:var(--panel); border:1px solid var(--line); color:var(--ink-dim);
+    cursor:pointer; margin-left:8px; white-space:nowrap;
+  }
+  .sync-chip.ok { color:var(--green); border-color:#2F5A3A; }
+  .sync-chip.busy { color:#5FA8E8; border-color:#2E5A80; }
+  .sync-chip.err { color:var(--red); border-color:#6B2F2A; background:rgba(224,108,91,.12); }
+  .sync-chip.off { opacity:.55; }
   .avg-bubble {
     background:var(--panel-hi); border:1px solid var(--amber-dim); border-radius:12px;
     padding:13px 16px; margin:14px 0;
@@ -279,6 +288,7 @@
   <header>
     <h1>The Daily Ledger</h1>
     <span class="goal-tag">goal <span id="goal-label"></span> kcal</span>
+    <button id="sync-chip" class="sync-chip" onclick="syncNow()" title="Tap to sync"></button>
   </header>
   <div class="rail-wrap">
     <button class="rail-arrow" onclick="scrollRail(-1)" title="Scroll left">‹</button>
@@ -362,6 +372,14 @@ const SYNC_KEYS = [
 ];
 const GIST_FILE = "daily-ledger.json";
 
+/* Turn Anthropic HTTP codes into something actionable. */
+function apiErrMsg(status) {
+  if (status === 401) return "API key rejected (401). Check the Data tab — it must start with sk-ant- and be entered on THIS device.";
+  if (status === 400) return "Request rejected (400). Usually a malformed or truncated API key.";
+  if (status === 429) return "Rate limited (429). Wait a moment and try again.";
+  if (status === 402 || status === 403) return "Billing or permission problem (" + status + "). Check credit at console.anthropic.com.";
+  return "API error " + status;
+}
 function ghToken() { return localStorage.getItem(LS_GHTOKEN) || ""; }
 function gistId()  { return localStorage.getItem(LS_GISTID) || ""; }
 function syncConfigured() { return !!(ghToken() && gistId()); }
@@ -495,6 +513,7 @@ async function syncNow(silent) {
   syncing = true;
   const btn = document.getElementById("sync-btn");
   if (btn) { btn.disabled = true; btn.textContent = "Syncing…"; }
+  setSyncChip("busy", "⟳ syncing…");
   try {
     /* 1. Locate the shared gist, or make one on first run. */
     let id = gistId();
@@ -540,12 +559,16 @@ async function syncNow(silent) {
 
     localStorage.setItem(LS_SYNCAT, new Date().toISOString());
     render();
-    setSyncStatus("Synced at " + fmtTime(new Date()) + " — " + mergedDays + " days.", true);
-    if (!silent) showToast(null, {ok:true, text:"Synced — " + mergedDays + " days on both devices."});
+    const c = syncCounts();
+    refreshSyncChip();
+    setSyncStatus("Synced at " + fmtTime(new Date()) + " — " + c.days + " days, " + c.sets + " logged sets.", true);
+    if (!silent) showToast(null, {ok:true, text:"Synced — " + c.days + " days and " + c.sets + " sets now on both devices."});
     return true;
   } catch(e) {
     setSyncStatus(e.message, false);
-    if (!silent) showToast(null, {ok:false, text:"Sync failed: " + e.message});
+    setSyncChip("err", "⚠ sync failed");
+    /* Background failures used to vanish silently; always surface them. */
+    showToast(null, {ok:false, text:"Sync failed: " + e.message + " — tap the sync chip to retry."});
     return false;
   } finally {
     syncing = false;
@@ -559,8 +582,28 @@ async function syncNow(silent) {
 let pushTimer = null;
 function queuePush() {
   if (!ghToken()) return;
+  setSyncChip("busy", "⟳ pending…");
   clearTimeout(pushTimer);
   pushTimer = setTimeout(() => syncNow(true), 3000);
+}
+/* The header chip makes sync state visible from every tab — background
+   failures used to be invisible unless you happened to be on the Data tab. */
+function setSyncChip(state, text) {
+  const el = document.getElementById("sync-chip");
+  if (!el) return;
+  el.className = "sync-chip " + (state || "");
+  el.textContent = text;
+}
+function syncCounts() {
+  const w = getWorkouts();
+  const sets = Object.values(w).reduce((s,arr)=>s+arr.filter(x=>x.done).length,0);
+  return { days: Object.keys(diary).length, sets };
+}
+function refreshSyncChip() {
+  if (!ghToken()) { setSyncChip("off", "sync off"); return; }
+  const at = localStorage.getItem(LS_SYNCAT);
+  const c = syncCounts();
+  setSyncChip("ok", "⟳ " + (at ? fmtTime(new Date(at)) : "ready") + " · " + c.days + "d " + c.sets + " sets");
 }
 function setSyncStatus(msg, ok) {
   const el = document.getElementById("sync-status");
@@ -568,16 +611,20 @@ function setSyncStatus(msg, ok) {
 }
 function saveGhToken() {
   const t = document.getElementById("gh-token").value.trim();
-  if (t) {
-    localStorage.setItem(LS_GHTOKEN, t);
-    renderData();
-    showToast(null,{ok:true,text:"Token saved — syncing now…"});
-    syncNow(); // no second step needed
-  } else {
+  if (!t) {
     localStorage.removeItem(LS_GHTOKEN);
     renderData();
     showToast(null,{ok:true,text:"Token cleared."});
+    return;
   }
+  if (/^sk-ant-/.test(t)) {
+    showToast(null,{ok:false,text:"That's your Anthropic API key, not a GitHub token. It goes in the API key box below."});
+    return;
+  }
+  localStorage.setItem(LS_GHTOKEN, t);
+  renderData();
+  showToast(null,{ok:true,text:"Token saved — syncing now…"});
+  syncNow(); // no second step needed
 }
 function disableSync() {
   localStorage.removeItem(LS_GHTOKEN);
@@ -1129,7 +1176,7 @@ async function sendCoachChat() {
         messages: msgs,
       }),
     });
-    if (!res.ok) throw new Error("API error " + res.status);
+    if (!res.ok) throw new Error(apiErrMsg(res.status));
     const data = await res.json();
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     const h2 = getCoachChat();
@@ -1177,7 +1224,7 @@ async function refreshTargets(silent) {
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
     });
-    if (!res.ok) throw new Error("API error " + res.status);
+    if (!res.ok) throw new Error(apiErrMsg(res.status));
     const data = await res.json();
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
@@ -1497,7 +1544,7 @@ async function askCoach() {
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
       body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
     });
-    if (!res.ok) throw new Error("API error " + res.status);
+    if (!res.ok) throw new Error(apiErrMsg(res.status));
     const data = await res.json();
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     localStorage.setItem(LS_COACHPLAN, text);
@@ -1569,7 +1616,7 @@ async function sendChat() {
         messages: msgs,
       }),
     });
-    if (!res.ok) throw new Error("API error " + res.status);
+    if (!res.ok) throw new Error(apiErrMsg(res.status));
     const data = await res.json();
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     const h2 = getChatHist();
@@ -1914,6 +1961,7 @@ function renderData() {
           ? (localStorage.getItem(LS_SYNCAT) ? "Last synced " + fmtTime(new Date(localStorage.getItem(LS_SYNCAT))) + "." : "Ready — tap Sync now.")
           : "One-time setup needed below.") +
       '</div>' +
+      '<div class="kv"><span class="l">On this device</span><span>'+syncCounts().days+' days · '+syncCounts().sets+' logged sets</span></div>' +
       (ghToken()
         ? '<div class="hint">Syncs automatically when you open and close the app. Tap the button any time you want it immediately. Safe to tap on either device in any order — it merges rather than overwrites.</div>'
         : '<div class="hint" style="margin-top:10px"><b>One-time setup (do this on both devices):</b><br>' +
@@ -1933,10 +1981,13 @@ function renderData() {
       '<input type="text" inputmode="numeric" id="goal-input" value="'+getGoal()+'">' +
       '<div class="btn-row"><button class="btn primary" onclick="saveGoal()">Save goal</button></div>' +
     '</div>' +
-    '<div class="panel-box"><div class="t">Claude API key</div>' +
+    '<div class="panel-box"><div class="t">Claude API key <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)">— for chat &amp; food logging</span></div>' +
+      '<div class="kv"><span class="l">Status</span><span style="color:'+(key && /^sk-ant-/.test(key) ? "var(--green)" : "var(--amber)")+'">' +
+        (!key ? "not set on this device" : /^sk-ant-/.test(key) ? "set (sk-ant-…"+esc(key.slice(-4))+")" : "looks wrong — not an sk-ant- key") +
+      '</span></div>' +
       '<input type="password" id="api-key" placeholder="sk-ant-…" value="'+esc(key)+'">' +
       '<div class="btn-row"><button class="btn primary" onclick="saveKey()">Save key</button></div>' +
-      '<div class="hint">With a key set, you can type food naturally and Claude estimates the calories. Without one, use the offline format: <b>food name = 350</b>, or <b>weight 72.5</b>, or <b>bf 18</b>. Get a key at console.anthropic.com. It\u2019s stored only in this browser \u2014 never put it in your GitHub repo.</div>' +
+      '<div class="hint"><b>This is a different credential from the sync token above.</b> The Anthropic key starts with <b>sk-ant-</b> and comes from console.anthropic.com; the GitHub token starts with ghp_ or github_pat_. Each device needs its own copy of this key — it is deliberately not synced, so entering it on your computer does not put it on your phone.<br>Without a key, use the offline format: <b>food name = 350</b>, <b>exercise = -300</b>, <b>weight 161</b>, or <b>bf 18</b>.</div>' +
     '</div>' +
     '<div class="panel-box"><div class="t">Import backup</div>' +
       '<textarea id="import-box" placeholder="Paste a JSON backup here…"></textarea>' +
@@ -1983,8 +2034,25 @@ function importBackup(btn) {
 }
 function saveKey() {
   const k = document.getElementById("api-key").value.trim();
-  if (k) localStorage.setItem(LS_KEY, k); else localStorage.removeItem(LS_KEY);
-  showToast(null,{ok:true,text: k ? "API key saved to this browser." : "API key cleared."});
+  if (!k) {
+    localStorage.removeItem(LS_KEY);
+    renderData();
+    showToast(null,{ok:true,text:"API key cleared."});
+    return;
+  }
+  /* The two password boxes are easy to mix up — catch it here rather than
+     letting chat fail with a confusing error later. */
+  if (/^gh[pousr]_|^github_pat_/.test(k)) {
+    showToast(null,{ok:false,text:"That's your GitHub token, not your Anthropic key. GitHub tokens go in the Sync box; the Anthropic key starts with sk-ant-."});
+    return;
+  }
+  if (!/^sk-ant-/.test(k)) {
+    showToast(null,{ok:false,text:"Anthropic keys start with sk-ant- . Copy the whole key from console.anthropic.com."});
+    return;
+  }
+  localStorage.setItem(LS_KEY, k);
+  renderData();
+  showToast(null,{ok:true,text:"API key saved to this browser."});
 }
 
 /* ============================ tabs ============================ */
@@ -2226,6 +2294,7 @@ try {
   showToast(null,{ok:false,text:"WARNING: this browser blocked storage — data will NOT persist. "+e.message});
 }
 render();
+refreshSyncChip();
 /* Sync on open so you always start from the latest across devices. */
 if (ghToken()) syncNow(true);
 /* Sync again when the app is backgrounded or closed. */
