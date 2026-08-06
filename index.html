@@ -439,12 +439,62 @@ async function ghFetch(url, opts) {
 
 /* Find this app's sync gist on the account — removes any need to copy IDs
    between devices. Both devices just need the same token. */
-async function findSyncGist() {
+/* Returns every sync gist on the account, newest first. More than one means
+   two devices each created their own and have been syncing in isolation. */
+async function findSyncGists() {
   const list = await ghFetch("https://api.github.com/gists?per_page=100");
-  for (const g of list) {
-    if (g.files && g.files[GIST_FILE]) return g.id;
+  return list
+    .filter(g => g.files && g.files[GIST_FILE])
+    .sort((a,b) => new Date(b.updated_at) - new Date(a.updated_at))
+    .map(g => ({ id: g.id, updated: g.updated_at }));
+}
+async function findSyncGist() {
+  const all = await findSyncGists();
+  return all.length ? all[0].id : null;
+}
+
+/* Merge every sync gist into one and delete the strays, so both devices end
+   up on a single shared file. */
+async function relinkSync() {
+  if (!ghToken()) { showToast(null,{ok:false,text:"Add your token first."}); return; }
+  setSyncStatus("Looking for sync files…");
+  try {
+    const all = await findSyncGists();
+    if (!all.length) { setSyncStatus("No sync file found — tap Sync now to create one.", false); return; }
+
+    /* Pull each one and merge them all into this device. */
+    let dead = getDeleted();
+    for (const g of all) {
+      const data = await ghFetch("https://api.github.com/gists/" + g.id);
+      const f = data.files && data.files[GIST_FILE];
+      if (!f || !f.content) continue;
+      const remote = JSON.parse(f.content);
+      dead = mergeTombstones(dead, parseOr(remote.deleted, {}));
+      localStorage.setItem(LS_DELETED, JSON.stringify(dead));
+      const md = mergeDiaries(parseOr(localStorage.getItem(LS_DIARY), {}), parseOr(remote.diary, {}), dead);
+      localStorage.setItem(LS_DIARY, JSON.stringify(md));
+      const mw = mergeWorkouts(parseOr(localStorage.getItem(LS_WORKOUTS), {}), parseOr(remote.workouts, {}), dead);
+      localStorage.setItem(LS_WORKOUTS, JSON.stringify(mw));
+    }
+    diary = loadDiary();
+    selected = pickDefaultDate();
+
+    /* Keep the newest, delete the rest so this can't recur. */
+    const keep = all[0].id;
+    localStorage.setItem(LS_GISTID, keep);
+    for (const g of all.slice(1)) {
+      try { await ghFetch("https://api.github.com/gists/" + g.id, { method: "DELETE" }); } catch(e) {}
+    }
+    localStorage.setItem(LS_SYNCAT, "1970-01-01T00:00:00.000Z"); // force a full push
+    await syncNow();
+    render();
+    showToast(null,{ok:true,text: all.length > 1
+      ? "Found " + all.length + " separate sync files — merged into one. Now do the same on your other device."
+      : "Relinked to your sync file."});
+  } catch(e) {
+    setSyncStatus(e.message, false);
+    showToast(null,{ok:false,text:"Relink failed: " + e.message});
   }
-  return null;
 }
 
 /* ===== Merge =====
@@ -709,6 +759,50 @@ function setSyncStatus(msg, ok) {
   const el = document.getElementById("sync-status");
   if (el) { el.textContent = msg; el.style.color = ok === true ? "var(--green)" : ok === false ? "var(--red)" : "var(--ink-dim)"; }
 }
+/* Reports what is actually in the cloud right now, so a mismatch between
+   devices is visible instead of guessed at. */
+async function syncDiagnose() {
+  const out = document.getElementById("sync-diag");
+  if (!out) return;
+  out.textContent = "Checking…";
+  const lines = [];
+  try {
+    const c = syncCounts();
+    lines.push("This device: " + c.days + " days, " + c.sets + " sets");
+    lines.push("Token saved: " + (ghToken() ? "yes (…" + ghToken().slice(-4) + ")" : "NO — sync cannot work"));
+    lines.push("Sync file this device uses: " + (gistId() || "none yet"));
+    if (!ghToken()) { out.textContent = lines.join("\n"); return; }
+
+    const user = await ghFetch("https://api.github.com/user");
+    lines.push("GitHub account: " + user.login);
+
+    const all = await findSyncGists();
+    lines.push("Sync files found on this account: " + all.length + (all.length > 1 ? "  << SHOULD BE 1" : ""));
+    for (const g of all) {
+      const data = await ghFetch("https://api.github.com/gists/" + g.id);
+      const f = data.files && data.files[GIST_FILE];
+      let days = "?", sets = "?";
+      if (f && f.content) {
+        try {
+          const p = JSON.parse(f.content);
+          days = Object.keys(parseOr(p.diary, {})).length;
+          const w = parseOr(p.workouts, {});
+          sets = Object.values(w).reduce((s,a)=>s+a.filter(x=>x.done).length,0);
+        } catch(e) {}
+      }
+      lines.push("  - " + g.id.slice(0,10) + "... : " + days + " days, " + sets + " sets, updated " +
+        new Date(g.updated).toLocaleString() + (g.id === gistId() ? "   <-- used by this device" : ""));
+    }
+    if (all.length > 1) lines.push("\nPROBLEM: your devices are on different files. Tap 'Fix sync link' on BOTH devices.");
+    else if (all.length === 1 && gistId() && all[0].id !== gistId()) lines.push("\nPROBLEM: this device points at a file that no longer exists. Tap 'Fix sync link'.");
+    else if (all.length === 1) lines.push("\nOK: one shared file. If your other device shows this same ID, sync is wired correctly.");
+    else lines.push("\nNo sync file yet — tap Sync now.");
+  } catch(e) {
+    lines.push("ERROR: " + e.message);
+  }
+  out.textContent = lines.join("\n");
+}
+
 function saveGhToken() {
   const t = document.getElementById("gh-token").value.trim();
   if (!t) {
@@ -2163,8 +2257,11 @@ function renderData() {
       '<input type="password" id="gh-token" placeholder="ghp_… or github_pat_…" value="'+esc(ghToken())+'"></div>' +
       '<div class="btn-row">' +
         '<button class="btn primary" onclick="saveGhToken()">Save token</button>' +
+        (ghToken() ? '<button class="btn" onclick="relinkSync()">Fix sync link</button>' : '') +
+        (ghToken() ? '<button class="btn" onclick="syncDiagnose()">Check sync</button>' : '') +
         (ghToken() ? '<button class="btn danger" onclick="disableSync()">Turn off sync</button>' : '') +
       '</div>' +
+      '<pre id="sync-diag" style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);white-space:pre-wrap;margin:10px 0 0;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;display:'+(ghToken()?"block":"none")+'">Tap "Check sync" to see exactly what is happening.</pre>' +
       (gistId() ? '<div class="hint" style="margin-top:8px;opacity:.6">Sync file: '+esc(gistId().slice(0,12))+'… (found automatically)</div>' : '') +
     '</div>' +
     '<div class="panel-box"><div class="t">Daily calorie goal</div>' +
