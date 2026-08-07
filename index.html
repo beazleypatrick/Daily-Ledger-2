@@ -390,7 +390,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v25";
+const APP_VERSION = "v26";
 
 
 const DEFAULT_GOAL = 1900;
@@ -407,6 +407,7 @@ const LS_WORKOUTS = "ledger-workouts";
 const LS_COACHCHAT = "ledger-coachchat";
 const LS_UNITS = "ledger-units";
 const LS_TARGETS = "ledger-targets";
+const LS_PLAN = "ledger-plan";
 const LS_GHTOKEN = "ledger-gh-token";
 const LS_GISTID  = "ledger-gist-id";
 const LS_SYNCAT  = "ledger-synced-at";
@@ -429,6 +430,7 @@ const SYNC_KEYS = [
   ["profile", LS_PROFILE],
   ["bodymap", LS_BODYMAP],
   ["coachplan",LS_COACHPLAN],
+  ["plan",    LS_PLAN],
   ["deleted", LS_DELETED],
 ];
 const GIST_FILE = "daily-ledger.json";
@@ -711,7 +713,7 @@ function mergeIntoLocal(remote) {
 
   /* Single-value settings: newer side wins. */
   [["goal",LS_GOAL],["units",LS_UNITS],["profile",LS_PROFILE],["bodymap",LS_BODYMAP],
-   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN]].forEach(([name,key]) => {
+   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN],["plan",LS_PLAN]].forEach(([name,key]) => {
     if (remoteNewer && typeof remote[name] === "string") localStorage.setItem(key, remote[name]);
   });
   /* Notes: keep the longer text rather than silently dropping writing. */
@@ -723,6 +725,7 @@ function mergeIntoLocal(remote) {
 
   diary = loadDiary();
   selected = pickDefaultDate();
+  PLAN_CACHE = null; // a plan change from the other device must take effect
   return { days: Object.keys(mergedDiary).length };
 }
 
@@ -1411,7 +1414,7 @@ function bestSet(name) {
 function getSkipped() {
   const w = getWorkouts();
   const owed = [];
-  COACH_PLAN.forEach(day => day.ex.forEach(e => {
+  getPlan().forEach(day => day.ex.forEach(e => {
     const entries = w[e.n] || [];
     if (!entries.length) return;
     const last = entries[entries.length-1];
@@ -1564,6 +1567,7 @@ function exCard(e, dayName) {
         '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">✓ Did it</button>' +
         '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>' +
         (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' : '') +
+        '<button class="co-btn sm ghost" data-ex-swap="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'" title="Ask the coach to replace this">Swap</button>' +
       '</div>' +
     '</div></div>';
 }
@@ -1577,7 +1581,22 @@ document.addEventListener("click", function(e) {
   if (s) { skipSet(s.dataset.exSkip, s.dataset.exDay); return; }
   const u = e.target.closest("[data-ex-undo]");
   if (u) { undoLast(u.dataset.exUndo); return; }
+  const sw = e.target.closest("[data-ex-swap]");
+  if (sw) { requestSwap(sw.dataset.exSwap, sw.dataset.exDay); return; }
 });
+
+/* Ask the coach to replace one exercise, in one tap. */
+function requestSwap(exName, dayName) {
+  const key = localStorage.getItem(LS_KEY);
+  if (!key) { showToast(null, {ok:false, text:"Add your API key in the Data tab to use swaps."}); return; }
+  const why = prompt("Swap out \"" + exName + "\" — why? (e.g. no equipment, hurts my shoulder, too easy)", "I don't have access to this equipment");
+  if (why === null) return;
+  const inp = document.getElementById("coach-q");
+  const msg = "Replace " + exName + " on " + dayName + ". Reason: " + (why || "I want something different") + ". Update my plan.";
+  if (inp) { inp.value = msg; sendCoachChat(); }
+  else { pendingCoachMsg = msg; switchTab("coach"); setTimeout(() => { const i2 = document.getElementById("coach-q"); if (i2) { i2.value = msg; sendCoachChat(); } }, 50); }
+}
+let pendingCoachMsg = null;
 
 /* ===== Workout scheduling =====
    With a 4-day rotation trained ~4x/week, each day comes round roughly every
@@ -1613,7 +1632,7 @@ function dayScheduleInfo(dayName) {
 /* Which day should he train next? The one longest since it was done. */
 function nextUpDay() {
   let best = null, bestScore = -Infinity;
-  COACH_PLAN.forEach((d, i) => {
+  getPlan().forEach((d, i) => {
     const last = dayLastDone(d.name);
     const score = last ? daysBetween(last, todayISO()) : 999;
     if (score > bestScore) { bestScore = score; best = { day: d, idx: i, last: last }; }
@@ -1733,6 +1752,30 @@ function coachContext() {
     "HISTORY: reports poor bicep/tricep/chest growth from light machine work; wants to be lean and proportional; has some waist fat.";
 }
 
+/* The coach can edit the plan, so it answers in JSON: prose in `reply`,
+   optional structured changes in `planEdits`. */
+function COACH_SYSTEM() {
+  const plan = getPlan().map(d => d.name + ": " + d.ex.map(e => e.n).join(", ")).join("\n");
+  return "You are a strength & conditioning coach inside the client's own training app. " +
+    "Be direct, specific and honest — including when the honest answer is that they're under-loading, " +
+    "under-eating for muscle growth, or expecting spot reduction. Use their actual logged numbers; if a lift " +
+    "hasn't moved in weeks, say so plainly and give the exact next weight to try. Never give medical advice; " +
+    "suggest a professional for pain or injury.\n\n" +
+    "YOU CAN EDIT THE PLAN. If the client can't do an exercise (no equipment, injury, dislike), or asks for " +
+    "something different, harder, or extra — change the plan yourself using planEdits. Don't just suggest it in words. " +
+    "Match the muscle group when swapping, and pick a substitute that needs different equipment from the one being replaced.\n\n" +
+    "CURRENT PLAN:\n" + plan + "\n\n" +
+    "CLIENT:\n" + coachContext() + "\n\n" +
+    "Reply with ONLY a JSON object, no markdown fences:\n" +
+    '{"reply":"your answer in plain text, under 180 words, no markdown","planEdits":[]}\n\n' +
+    "Each planEdit is one of:\n" +
+    '{"action":"replace","day":"exact day name from the plan","target":"exact current exercise name","exercise":{"n":"New Exercise Name","fig":"one of: bench press curl pushdown row pulldown squat plank treadmill run fly","load":"each|total|body","s":"4 × 8–10","c":["one or two short form cues"],"p":"progression rule"}}\n' +
+    '{"action":"add","day":"exact day name","exercise":{ ...same shape... }}\n' +
+    '{"action":"remove","day":"exact day name","target":"exact exercise name"}\n\n' +
+    "load: 'each' = weight of ONE dumbbell, 'total' = whole bar or machine stack, 'body' = bodyweight. " +
+    "fig picks the little illustration, so choose the closest movement. Leave planEdits empty for ordinary questions.";
+}
+
 async function sendCoachChat() {
   const inp = document.getElementById("coach-q");
   const key = localStorage.getItem(LS_KEY);
@@ -1752,16 +1795,35 @@ async function sendCoachChat() {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 1000,
-        system: "You are a strength & conditioning coach inside the client's own training app. Be direct, specific and honest — including when the honest answer is that they're under-loading, under-eating for muscle growth, or expecting spot reduction. Use their actual logged numbers when you answer; if a lift hasn't moved in weeks, say so plainly and give the exact next weight to try. Keep answers under 200 words, plain text, no markdown headers. If they have logged no sets, tell them what to log. When you recommend specific weights, end with one short line: 'Tap Set target weights to put these on your cards.' Never give medical advice; suggest a professional for pain or injury.\n\nHere is everything known about the client:\n" + coachContext(),
+        system: COACH_SYSTEM(),
         messages: msgs,
       }),
     });
     if (!res.ok) throw new Error(apiErrMsg(res.status));
     const data = await res.json();
-    const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+    const raw = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+
+    /* The coach replies as JSON so it can change the plan, not just talk
+       about it. Fall back to plain text if parsing fails. */
+    let text = raw, edits = [];
+    try {
+      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      if (parsed && typeof parsed.reply === "string") {
+        text = parsed.reply;
+        edits = Array.isArray(parsed.planEdits) ? parsed.planEdits : [];
+      }
+    } catch(err) { /* plain prose reply — fine */ }
+
+    let applied = [];
+    if (edits.length) {
+      applied = applyPlanEdits(edits);
+      if (applied.length) text += "\n\n\u2713 " + applied.join("\n\u2713 ");
+    }
+
     const h2 = getCoachChat();
     h2.push({ role: "assistant", text: text || "(no response)" });
     saveCoachChat(h2);
+    if (applied.length) showToast(null, {ok:true, text:"Plan updated \u2014 " + applied[0]});
   } catch(e) {
     const h2 = getCoachChat();
     h2.push({ role: "assistant", text: "Error: " + e.message });
@@ -1783,7 +1845,7 @@ async function refreshTargets(silent) {
   const U = getUnits();
   try {
     const exList = [];
-    COACH_PLAN.forEach(day => day.ex.forEach(e => {
+    getPlan().forEach(day => day.ex.forEach(e => {
       if (/walk|run/i.test(e.n)) return; // cardio has no load target
       const last = lastSet(e.n);
       const basis = e.load === "each" ? " [weight = ONE dumbbell, per hand]" : e.load === "body" ? " [bodyweight]" : " [total bar/stack weight]";
@@ -1812,7 +1874,7 @@ async function refreshTargets(silent) {
 
     /* Only accept targets whose names match real exercises in the plan. */
     const valid = new Set();
-    COACH_PLAN.forEach(day => day.ex.forEach(e => valid.add(e.n)));
+    getPlan().forEach(day => day.ex.forEach(e => valid.add(e.n)));
     const t = getTargets();
     let n = 0;
     (parsed.targets || []).forEach(x => {
@@ -1909,7 +1971,7 @@ function exSvg(kind) {
 
 /* Default 4-day plan targeting Patrick's stated goals: arm/chest size,
    waist trim (via deficit), keep his incline-walk cardio. */
-const COACH_PLAN = [
+const DEFAULT_PLAN = [
   { name: "Day 1 — Chest & Triceps", burn: 300, meta: "~50 min + incline walk", ex: [
     { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0 mph", c:["Your usual walk, shortened — just to warm up, not to tire out."], p:"" },
     { fig:"bench", n:"Dumbbell bench press", load:"each", s:"4 × 8–10", c:["Lower to chest with control, press up hard.","Pick a weight where the last 2 reps are a genuine fight."], p:"Add 1–2 kg once you hit 4×10 clean." },
@@ -1942,6 +2004,93 @@ const COACH_PLAN = [
     { fig:"treadmill", n:"Incline walk finisher", load:"body", s:"20–25 min · 12% · 3.0", c:["Your favourite, at full length — great low-impact burn for the AZ heat months."], p:"" },
   ]},
 ];
+
+/* ===== Live plan =====
+   The plan above is only the starting template. The working plan lives in
+   storage so the coach (or you) can swap exercises in and out, and it syncs
+   across devices like everything else. COACH_PLAN reads it on every use. */
+let PLAN_CACHE = null;
+function getPlan() {
+  if (PLAN_CACHE) return PLAN_CACHE;
+  try {
+    const raw = localStorage.getItem(LS_PLAN);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (Array.isArray(p) && p.length) { PLAN_CACHE = p; return PLAN_CACHE; }
+    }
+  } catch(e) {}
+  PLAN_CACHE = JSON.parse(JSON.stringify(DEFAULT_PLAN));
+  return PLAN_CACHE;
+}
+function savePlan(plan) {
+  PLAN_CACHE = plan;
+  const payload = JSON.stringify(plan);
+  localStorage.setItem(LS_PLAN, payload);
+  if (localStorage.getItem(LS_PLAN) !== payload) throw new Error("Read-back after save did not match.");
+  queuePush();
+  return payload.length;
+}
+function resetPlan() {
+  PLAN_CACHE = null;
+  localStorage.removeItem(LS_PLAN);
+  queuePush();
+  renderCoach();
+  showToast(null, {ok:true, text:"Plan reset to the original 4-day split."});
+}
+
+/* Apply structured edits from the coach. Returns a list of plain-English
+   descriptions of what changed. */
+function applyPlanEdits(edits) {
+  const plan = JSON.parse(JSON.stringify(getPlan()));
+  const done = [];
+  const findDay = (name) => {
+    if (!name) return null;
+    const lower = String(name).toLowerCase();
+    return plan.find(d => d.name.toLowerCase() === lower)
+        || plan.find(d => d.name.toLowerCase().indexOf(lower) !== -1)
+        || plan.find(d => lower.indexOf(d.name.toLowerCase().replace(/^day \d+ — /,"")) !== -1);
+  };
+  const validFig = ["bench","press","curl","pushdown","row","pulldown","squat","plank","treadmill","run","fly"];
+  const clean = (ex) => ({
+    fig: validFig.indexOf(ex.fig) !== -1 ? ex.fig : "press",
+    n: String(ex.n || "Exercise").slice(0, 60),
+    load: ["each","total","body"].indexOf(ex.load) !== -1 ? ex.load : "total",
+    s: String(ex.s || "3 × 8–10").slice(0, 40),
+    c: Array.isArray(ex.c) ? ex.c.slice(0,3).map(x => String(x).slice(0,140)) : [],
+    p: String(ex.p || "").slice(0, 140),
+  });
+
+  (edits || []).forEach(e => {
+    const day = findDay(e.day);
+    if (!day) return;
+    if (e.action === "replace" && e.target && e.exercise) {
+      const i = day.ex.findIndex(x => x.n.toLowerCase() === String(e.target).toLowerCase());
+      if (i !== -1) {
+        const oldName = day.ex[i].n;
+        day.ex[i] = clean(e.exercise);
+        done.push("Swapped " + oldName + " for " + day.ex[i].n + " on " + day.name);
+      }
+    } else if (e.action === "add" && e.exercise) {
+      const ex = clean(e.exercise);
+      if (!day.ex.some(x => x.n.toLowerCase() === ex.n.toLowerCase())) {
+        day.ex.push(ex);
+        done.push("Added " + ex.n + " to " + day.name);
+      }
+    } else if (e.action === "remove" && e.target) {
+      const i = day.ex.findIndex(x => x.n.toLowerCase() === String(e.target).toLowerCase());
+      if (i !== -1 && day.ex.length > 1) {
+        done.push("Removed " + day.ex[i].n + " from " + day.name);
+        day.ex.splice(i, 1);
+      }
+    }
+  });
+
+  if (done.length) {
+    try { savePlan(plan); }
+    catch(err) { return ["Changed on screen but SAVE FAILED: " + err.message]; }
+  }
+  return done;
+}
 
 function getProfile() {
   try { return JSON.parse(localStorage.getItem(LS_PROFILE)) || {}; } catch(e) { return {}; }
@@ -2055,7 +2204,7 @@ function renderCoach() {
     progressionPanel() +
 
     '<div class="co-box"><div class="t">Ask your coach</div>' +
-      '<div class="co-sub" style="margin-bottom:8px">Your coach sees your logged lifts, progression, skipped exercises, calorie averages and body map. Ask things like \u201cam I lifting enough?\u201d or \u201cwhy aren\u2019t my arms growing?\u201d</div>' +
+      '<div class="co-sub" style="margin-bottom:8px">Your coach sees your logged lifts, progression, skipped exercises, calorie averages and body map \u2014 <b>and can change your plan</b>. Try \u201cno deadlift machine, swap it for something else\u201d, \u201cadd more chest work\u201d, or \u201cam I lifting enough?\u201d</div>' +
       '<div id="coach-chat-scroll" class="coach-chat">' + coachChatBody() + '</div>' +
       (key ? '<div class="row" style="margin-top:8px">' +
         '<input id="coach-q" placeholder="Ask your coach…" autocomplete="off">' +
@@ -2065,10 +2214,11 @@ function renderCoach() {
     '</div>' +
 
     '<div class="co-box" style="padding-bottom:6px"><div class="t">The week — 4 days, any order</div>' +
-      '<div class="co-sub" style="margin-bottom:10px">Tap a day to expand. Each card shows a <b>target</b> — automatic progression from your last session, or your coach\u2019s number once you\u2019ve tapped <b>Set target weights</b>. The boxes prefill with the target, so just adjust if reality differed, then hit <b>✓ Did it</b>. <b>Skip</b> carries the exercise forward. AZ heat note: incline walks replace outdoor runs guilt-free June–Sept; keep the 1–2 monthly 5Ks for cooler mornings.</div>' +
+      '<div class="co-sub" style="margin-bottom:10px">Ask the coach to change any of this \u2014 \u201cI can\u2019t do deadlifts, swap it\u201d \u2014 and the cards update straight away. Tap a day to expand. Each card shows a <b>target</b> — automatic progression from your last session, or your coach\u2019s number once you\u2019ve tapped <b>Set target weights</b>. The boxes prefill with the target, so just adjust if reality differed, then hit <b>✓ Did it</b>. <b>Skip</b> carries the exercise forward. AZ heat note: incline walks replace outdoor runs guilt-free June–Sept; keep the 1–2 monthly 5Ks for cooler mornings.</div>' +
+      (localStorage.getItem(LS_PLAN) ? '<div class="btn-row" style="margin-top:0"><button class="co-btn ghost" onclick="resetPlan()">Reset to original plan</button></div>' : '') +
     '</div>' +
     carryForwardPanel() +
-    COACH_PLAN.map((day, di) => {
+    getPlan().map((day, di) => {
       const sched = dayScheduleInfo(day.name);
       return '<div class="co-day" id="co-day-'+di+'">' +
         '<div class="co-day-head" onclick="toggleDay('+di+')">' +
@@ -2123,7 +2273,7 @@ function toggleDay(di) {
   showToast(null, {ok:true, text:"Profile saved."});
 }
 function logWorkout(di) {
-  const day = COACH_PLAN[di];
+  const day = getPlan()[di];
   const entry = ensureDay(todayISO());
   entry.exercise.push({ id: newId(), name: "Gym — " + day.name.replace(/^Day \d+ — /,""), kcal: day.burn });
   selected = todayISO();
@@ -2927,4 +3077,3 @@ setInterval(() => {
 </script>
 </body>
 </html>
-
