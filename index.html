@@ -424,7 +424,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v29";
+const APP_VERSION = "v30";
 
 
 const DEFAULT_GOAL = 1900;
@@ -485,7 +485,6 @@ async function apiError(res) {
   if (res.status === 529 || res.status >= 500) return "Anthropic's service is busy — try again in a moment.";
   return detail || ("API error " + res.status);
 }
-function apiErrMsg(status) { return "API error " + status; }
 
 /* Anthropic call with one automatic retry for transient failures, so a blip
    doesn't cost you your typing. */
@@ -515,21 +514,12 @@ async function callClaude(key, body) {
 }
 function ghToken() { return localStorage.getItem(LS_GHTOKEN) || ""; }
 function gistId()  { return localStorage.getItem(LS_GISTID) || ""; }
-function syncConfigured() { return !!(ghToken() && gistId()); }
 
 /* Bundle every synced key plus a timestamp used to resolve conflicts. */
 function buildSyncPayload() {
   const out = { updatedAt: new Date().toISOString(), device: navigator.userAgent.slice(0,60) };
   SYNC_KEYS.forEach(([name, key]) => { out[name] = localStorage.getItem(key); });
   return out;
-}
-function applySyncPayload(p) {
-  SYNC_KEYS.forEach(([name, key]) => {
-    if (typeof p[name] === "string" && p[name] !== null) localStorage.setItem(key, p[name]);
-    else if (p[name] === null) localStorage.removeItem(key);
-  });
-  diary = loadDiary();
-  selected = pickDefaultDate();
 }
 
 /* Fingerprint of the local data, so we only upload when something really
@@ -836,13 +826,12 @@ async function syncNow(silent) {
 
     /* 2. Pull remote and merge into local. */
     setSyncStatus("Merging…");
-    let mergedDays = Object.keys(diary).length;
     try {
       const data = await ghFetch("https://api.github.com/gists/" + id);
       const f = data.files && data.files[GIST_FILE];
       if (f && f.content) {
         const remote = JSON.parse(f.content);
-        mergedDays = mergeIntoLocal(remote).days;
+        mergeIntoLocal(remote);
       }
     } catch(e) {
       if (/404/.test(e.message)) {
@@ -855,7 +844,7 @@ async function syncNow(silent) {
           localStorage.setItem(LS_GISTID, id);
           const data2 = await ghFetch("https://api.github.com/gists/" + id);
           const f2 = data2.files && data2.files[GIST_FILE];
-          if (f2 && f2.content) mergedDays = mergeIntoLocal(JSON.parse(f2.content)).days;
+          if (f2 && f2.content) mergeIntoLocal(JSON.parse(f2.content));
         } else {
           const created = await ghFetch("https://api.github.com/gists", {
             method: "POST",
@@ -898,7 +887,6 @@ async function syncNow(silent) {
   } catch(e) {
     setSyncStatus(e.message, false);
     setSyncChip("err", "⚠ sync failed");
-    lastSyncError = e.message;
     showSyncBanner(e.message);
     return false;
   } finally {
@@ -919,7 +907,6 @@ function queuePush() {
 }
 /* The header chip makes sync state visible from every tab — background
    failures used to be invisible unless you happened to be on the Data tab. */
-let lastSyncError = "";
 /* A persistent, readable explanation on the main screen — the red chip alone
    didn't say what to actually do about it. */
 function showSyncBanner(msg) {
@@ -951,7 +938,6 @@ function showSyncBanner(msg) {
 function clearSyncBanner() {
   const el = document.getElementById("sync-banner");
   if (el) el.remove();
-  lastSyncError = "";
 }
 
 function setSyncChip(state, text) {
@@ -978,49 +964,6 @@ function refreshSyncChip() {
 function setSyncStatus(msg, ok) {
   const el = document.getElementById("sync-status");
   if (el) { el.textContent = msg; el.style.color = ok === true ? "var(--green)" : ok === false ? "var(--red)" : "var(--ink-dim)"; }
-}
-/* Reports what is actually in the cloud right now, so a mismatch between
-   devices is visible instead of guessed at. */
-async function syncDiagnose() {
-  const out = document.getElementById("sync-diag");
-  if (!out) return;
-  out.textContent = "Checking…";
-  const lines = [];
-  try {
-    const c = syncCounts();
-    lines.push("This device: " + c.days + " days, " + c.sets + " sets");
-    lines.push("Token saved: " + (ghToken() ? "yes (…" + ghToken().slice(-4) + ")" : "NO — sync cannot work"));
-    lines.push("Sync file this device uses: " + (gistId() || "none yet"));
-    if (!ghToken()) { out.textContent = lines.join("\n"); return; }
-
-    const user = await ghFetch("https://api.github.com/user");
-    lines.push("GitHub account: " + user.login);
-
-    const all = await findSyncGists();
-    lines.push("Sync files found on this account: " + all.length + (all.length > 1 ? "  << SHOULD BE 1" : ""));
-    for (const g of all) {
-      const data = await ghFetch("https://api.github.com/gists/" + g.id);
-      const f = data.files && data.files[GIST_FILE];
-      let days = "?", sets = "?";
-      if (f && f.content) {
-        try {
-          const p = JSON.parse(f.content);
-          days = Object.keys(parseOr(p.diary, {})).length;
-          const w = parseOr(p.workouts, {});
-          sets = Object.values(w).reduce((s,a)=>s+a.filter(x=>x.done).length,0);
-        } catch(e) {}
-      }
-      lines.push("  - " + g.id.slice(0,10) + "... : " + days + " days, " + sets + " sets, updated " +
-        new Date(g.updated).toLocaleString() + (g.id === gistId() ? "   <-- used by this device" : ""));
-    }
-    if (all.length > 1) lines.push("\nPROBLEM: your devices are on different files. Tap 'Fix sync link' on BOTH devices.");
-    else if (all.length === 1 && gistId() && all[0].id !== gistId()) lines.push("\nPROBLEM: this device points at a file that no longer exists. Tap 'Fix sync link'.");
-    else if (all.length === 1) lines.push("\nOK: one shared file. If your other device shows this same ID, sync is wired correctly.");
-    else lines.push("\nNo sync file yet — tap Sync now.");
-  } catch(e) {
-    lines.push("ERROR: " + e.message);
-  }
-  out.textContent = lines.join("\n");
 }
 
 /* Tests the token directly against GitHub and explains, in plain language,
@@ -1560,22 +1503,6 @@ function getSkipped() {
 /* Record a set. done=false marks it explicitly skipped. */
 /* Re-rendering the whole Coach tab used to throw you back to the top and
    close the day you were working through. Remember both and restore them. */
-let coachOpenDays = new Set();
-function captureCoachState() {
-  coachOpenDays = new Set();
-  document.querySelectorAll(".co-day.open").forEach(el => {
-    const m = /co-day-(\d+)/.exec(el.id);
-    if (m) coachOpenDays.add(parseInt(m[1], 10));
-  });
-  return window.scrollY || document.documentElement.scrollTop || 0;
-}
-function restoreCoachState(scrollY) {
-  coachOpenDays.forEach(i => {
-    const el = document.getElementById("co-day-" + i);
-    if (el) el.classList.add("open");
-  });
-  if (scrollY != null) window.scrollTo(0, scrollY);
-}
 /* Wrapper used by every in-place Coach action. */
 /* Update ONE exercise card in place. Re-rendering the whole tab was what
    collapsed the open day and threw you back to the top. */
@@ -1585,11 +1512,6 @@ function refreshExCard(exName, dayName) {
   const ex = day && day.ex.find(x => x.n === exName);
   if (!el || !ex) { renderCoach(); return; }
   el.outerHTML = exCard(ex, dayName);
-}
-function renderCoachKeepPlace() {
-  const y = captureCoachState();
-  renderCoach();
-  restoreCoachState(y);
 }
 
 function logSet(exName, dayName) {
@@ -1853,24 +1775,6 @@ function progressionInner() {
     (!gaining.length && !stalled.length ? '<div class="co-sub">Log a couple more sessions per lift and the trend appears here.</div>' : '');
 }
 
-function progressionPanel() {
-  const rows = progressionReport();
-  const w = getWorkouts();
-  const totalSets = Object.values(w).reduce((s,arr)=>s+arr.filter(x=>x.done).length,0);
-  if (!totalSets) return '<div class="co-box"><div class="t">Progression</div>' +
-    '<div class="co-sub">Nothing logged yet. Enter weight and reps on the exercise cards and tick <b>✓ Did it</b> — after two sessions per lift, the coach can tell you whether you\u2019re actually progressing or spinning your wheels.</div></div>';
-  const stalled = rows.filter(r => r.dw <= 0 && r.span >= 3);
-  const gaining = rows.filter(r => r.dw > 0);
-  const U = getUnits();
-  return '<div class="co-box"><div class="t">Progression — '+totalSets+' sets logged</div>' +
-    (gaining.length ? '<div class="co-sub" style="color:var(--blue)">▲ Moving up: ' +
-      gaining.map(r=>esc(r.name)+" "+r.from+"→"+r.to+" "+U).join(" · ") + '</div>' : '') +
-    (stalled.length ? '<div class="co-sub" style="color:var(--amber);margin-top:6px">■ Stalled ('+stalled.length+'): ' +
-      stalled.map(r=>esc(r.name)+" stuck at "+r.to+" "+U+" over "+r.span+" sessions").join(" · ") +
-      '<br>If form is solid, add the smallest increment available or add one rep per set.</div>' : '') +
-    (!gaining.length && !stalled.length ? '<div class="co-sub">Log a couple more sessions per lift and the trend will show up here.</div>' : '') +
-    '</div>';
-}
 
 /* ===== Coach chat — separate from the general Chat tab, and it sees
    the client's actual training + nutrition data. ===== */
@@ -1879,12 +1783,6 @@ function getCoachChat() {
 }
 function saveCoachChat(h) {
   try { localStorage.setItem(LS_COACHCHAT, JSON.stringify(h.slice(-30))); } catch(e) {}
-}
-function clearCoachChat() { localStorage.removeItem(LS_COACHCHAT); renderCoach(); }
-function coachChatBody() {
-  const h = getCoachChat();
-  if (!h.length) return '<div class="co-sub" style="padding:6px 2px">No questions yet.</div>';
-  return h.map(m => '<div class="cmsg '+m.role+'">'+esc(m.text)+'</div>').join("");
 }
 
 /* Assembles everything the coach knows about the client. */
@@ -3164,12 +3062,14 @@ async function submitEntry(text) {
       return;
     }
 
+    forceSelectedDate(result.updates, text);
     const applied = applyUpdates(result.updates || []);
     if (applied) {
       const bytes = saveDiary();
       finishLoad(true);
-      showToast(result.reply, {ok:true, text:"Saved & read-back verified at "+fmtTime(new Date())+" ("+bytes.toLocaleString()+" bytes)."});
-      if (result.updates[0] && result.updates[0].date) selected = result.updates[0].date;
+      showToast(result.reply, {ok:true, text:"Saved to " + fmtDay(selected) + " at " + fmtTime(new Date()) + "."});
+      /* Only follow the entry if the user explicitly named another day. */
+      if (mentionsADay(text) && result.updates[0] && result.updates[0].date) selected = result.updates[0].date;
     } else {
       finishLoad(true);
       showToast(result.reply || "Nothing to log from that.", null);
@@ -3182,6 +3082,18 @@ async function submitEntry(text) {
   } finally {
     sendBtn.disabled = false; sendBtn.textContent = "Log";
   }
+}
+
+/* Does the message actually name a different day? Only then do we let the
+   model choose the date; otherwise entries always land on the day you're
+   looking at. Guessing here is what made inserted days appear to vanish. */
+function mentionsADay(text) {
+  return /\b(yesterday|today|tomorrow|tonight|last night|this morning|this afternoon|this evening|mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b|\d{1,2}\s*\/\s*\d{1,2}|\b\d{1,2}(st|nd|rd|th)\b/i.test(text || "");
+}
+function forceSelectedDate(updates, userText) {
+  if (mentionsADay(userText)) return updates;
+  (updates || []).forEach(u => { u.date = selected || todayISO(); });
+  return updates;
 }
 
 function applyUpdates(updates) {
