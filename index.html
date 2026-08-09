@@ -424,7 +424,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v28";
+const APP_VERSION = "v29";
 
 
 const DEFAULT_GOAL = 1900;
@@ -470,12 +470,48 @@ const SYNC_KEYS = [
 const GIST_FILE = "daily-ledger.json";
 
 /* Turn Anthropic HTTP codes into something actionable. */
-function apiErrMsg(status) {
-  if (status === 401) return "API key rejected (401). Check the Data tab — it must start with sk-ant- and be entered on THIS device.";
-  if (status === 400) return "Request rejected (400). Usually a malformed or truncated API key.";
-  if (status === 429) return "Rate limited (429). Wait a moment and try again.";
-  if (status === 402 || status === 403) return "Billing or permission problem (" + status + "). Check credit at console.anthropic.com.";
-  return "API error " + status;
+/* Read the actual reason out of the response body. The old version guessed
+   from the status code alone and blamed the key for everything. */
+async function apiError(res) {
+  let detail = "";
+  try {
+    const body = await res.json();
+    if (body && body.error && body.error.message) detail = body.error.message;
+  } catch(e) {}
+  if (res.status === 401) return "Key not accepted" + (detail ? ": " + detail : "") + ". Check it in the Data tab.";
+  if (res.status === 400 && /credit|balance|billing/i.test(detail)) return "Out of API credit — top up at console.anthropic.com.";
+  if (res.status === 400) return detail || "Request rejected (400).";
+  if (res.status === 429) return "Too many requests just now — try again in a moment.";
+  if (res.status === 529 || res.status >= 500) return "Anthropic's service is busy — try again in a moment.";
+  return detail || ("API error " + res.status);
+}
+function apiErrMsg(status) { return "API error " + status; }
+
+/* Anthropic call with one automatic retry for transient failures, so a blip
+   doesn't cost you your typing. */
+async function callClaude(key, body) {
+  const doCall = () => fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": key,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify(body),
+  });
+  let res;
+  try { res = await doCall(); }
+  catch(e) {
+    await new Promise(r => setTimeout(r, 1200));
+    res = await doCall();
+  }
+  if (!res.ok && (res.status === 429 || res.status === 529 || res.status >= 500)) {
+    await new Promise(r => setTimeout(r, 1500));
+    res = await doCall();
+  }
+  if (!res.ok) throw new Error(await apiError(res));
+  return res.json();
 }
 function ghToken() { return localStorage.getItem(LS_GHTOKEN) || ""; }
 function gistId()  { return localStorage.getItem(LS_GISTID) || ""; }
@@ -1937,7 +1973,7 @@ async function sendCoachChat() {
   if (!inp || !key) return;
   const q = inp.value.trim();
   if (!q) return;
-  let planChanged = false;
+  let planChanged = false, failed = false;
   const h = getCoachChat();
   h.push({ role: "user", text: q });
   saveCoachChat(h);
@@ -1948,18 +1984,12 @@ async function sendCoachChat() {
   if (rb) { rb.textContent = "Thinking\u2026"; rb.style.display = "block"; }
   try {
     const msgs = h.slice(-8).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-      body: JSON.stringify({
+    const data = await callClaude(key, {
         model: "claude-sonnet-4-6",
         max_tokens: 1000,
         system: COACH_SYSTEM(),
         messages: msgs,
-      }),
-    });
-    if (!res.ok) throw new Error(apiErrMsg(res.status));
-    const data = await res.json();
+      });
     const raw = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
 
     /* The coach replies as JSON so it can change the plan, not just talk
@@ -1985,11 +2015,17 @@ async function sendCoachChat() {
     saveCoachChat(h2);
     if (applied.length) showToast(null, {ok:true, text:"Plan updated \u2014 " + applied[0]});
   } catch(e) {
+    /* Drop the failed question from the history and hand the words back. */
     const h2 = getCoachChat();
-    h2.push({ role: "assistant", text: "Error: " + e.message });
+    if (h2.length && h2[h2.length-1].role === "user") h2.pop();
     saveCoachChat(h2);
+    const back = document.getElementById("coach-q");
+    if (back && !back.value) { back.value = q; back.focus(); }
+    const rb2 = document.getElementById("coach-reply");
+    if (rb2) { rb2.textContent = e.message + "  Your question is still in the box — tap Ask to retry."; rb2.style.display = "block"; }
+    failed = true;
   } finally {
-    if (planChanged) renderCoach(); else renderCoachBar();
+    if (planChanged) renderCoach(); else if (!failed) renderCoachBar();
     const b = document.getElementById("coach-send");
     if (b) { b.disabled = false; b.textContent = "Ask"; }
   }
@@ -2022,13 +2058,7 @@ async function refreshTargets(silent) {
       "\n\nRespond with ONLY a JSON object, no markdown fences, no other text:\n" +
       '{"targets":[{"name":"exact exercise name from the list","weight":0,"reps":"8-10","sets":"4","why":"short reason"}]}';
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (!res.ok) throw new Error(apiErrMsg(res.status));
-    const data = await res.json();
+    const data = await callClaude(key, { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] });
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
 
@@ -2491,13 +2521,7 @@ async function askCoach() {
     const recentEx = [];
     Object.keys(diary).sort().slice(-14).forEach(d => (diary[d].exercise||[]).forEach(x => recentEx.push(d+": "+x.name+" ("+x.kcal+" kcal)")));
     const prompt = coachContext() + "\n\nGive a concise personalized assessment and week-plan adjustment in plain text (no markdown): 1) calorie and protein guidance for his recomposition goal, 2) specific set/rep/weight-progression changes emphasizing his marked growth areas — reference his ACTUAL logged weights where available and name the next weight to try, 3) whether his current loading looks sufficient or too light, 4) cardio strategy for Arizona heat, 5) one realistic expectation about timeline. Max ~320 words, direct and specific.";
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
-    });
-    if (!res.ok) throw new Error(apiErrMsg(res.status));
-    const data = await res.json();
+    const data = await callClaude(key, { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] });
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     localStorage.setItem(LS_COACHPLAN, text);
     renderCoach();
@@ -2553,31 +2577,25 @@ async function sendChat() {
   if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "…"; }
   try {
     const msgs = hist.slice(-10).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": key,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
+    const data = await callClaude(key, {
         model: "claude-sonnet-4-6",
         max_tokens: 1000,
         system: "You are a helpful nutrition and wellness assistant inside a calorie-tracking app. Answer concisely. This is a general Q&A space — do NOT try to log food; just answer questions and offer ideas.",
         messages: msgs,
-      }),
-    });
-    if (!res.ok) throw new Error(apiErrMsg(res.status));
-    const data = await res.json();
+      });
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     const h2 = getChatHist();
     h2.push({ role: "assistant", text: text || "(no response)" });
     saveChatHist(h2);
   } catch(e) {
     const h2 = getChatHist();
-    h2.push({ role: "assistant", text: "Error: " + e.message });
+    if (h2.length && h2[h2.length-1].role === "user") h2.pop();
     saveChatHist(h2);
+    renderChat();
+    const back = document.getElementById("chat-q");
+    if (back) { back.value = q; back.focus(); }
+    showToast(null, {ok:false, text: e.message + " Your question is back in the box."});
+    return;
   } finally {
     renderChat();
   }
@@ -3124,6 +3142,12 @@ async function handleSend() {
   input.value = "";
   submitEntry(text);
 }
+/* Put the words back in the box so a failure never costs you the typing. */
+function restoreEntry(text) {
+  if (!input) return;
+  if (!input.value) input.value = text;
+  input.focus();
+}
 
 async function submitEntry(text) {
   sendBtn.disabled = true; sendBtn.textContent = "…";
@@ -3153,7 +3177,8 @@ async function submitEntry(text) {
     render();
   } catch(e) {
     finishLoad(false);
-    showToast(null, {ok:false, text:"Couldn't log that: "+e.message});
+    restoreEntry(text);
+    showToast(null, {ok:false, text: e.message + " \u2014 your text is back in the box, tap Log to retry."});
   } finally {
     sendBtn.disabled = false; sendBtn.textContent = "Log";
   }
@@ -3227,27 +3252,11 @@ IMPORTANT — clarifying questions: if the calorie estimate would swing meaningf
 Respond with ONLY a JSON object, no markdown fences:
 {"updates":[{"date":"YYYY-MM-DD","addMeals":[{"name":"string","kcal":0,"note":"optional"}],"addExercise":[{"name":"string","kcal":0,"note":"optional"}],"removeIndexes":[],"removeExerciseIndexes":[],"weightKg":null,"bodyFatPct":null}],"question":null,"reply":"short confirmation with kcal breakdown"}`;
 
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }],
-    }),
+  const data = await callClaude(apiKey, {
+    model: "claude-sonnet-4-6",
+    max_tokens: 1000,
+    messages: [{ role: "user", content: prompt }],
   });
-  if (!res.ok) {
-    const errBody = await res.text();
-    let msg = "API error " + res.status;
-    try { msg += ": " + (JSON.parse(errBody).error || {}).message; } catch(e){}
-    throw new Error(msg);
-  }
-  const data = await res.json();
   const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
   return JSON.parse(text.replace(/```json|```/g,"").trim());
 }
