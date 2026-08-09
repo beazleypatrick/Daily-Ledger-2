@@ -424,7 +424,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v30";
+const APP_VERSION = "v31";
 
 
 const DEFAULT_GOAL = 1900;
@@ -442,6 +442,7 @@ const LS_COACHCHAT = "ledger-coachchat";
 const LS_UNITS = "ledger-units";
 const LS_TARGETS = "ledger-targets";
 const LS_PLAN = "ledger-plan";
+const LS_REVIVED = "ledger-revived";
 const LS_GHTOKEN = "ledger-gh-token";
 const LS_GISTID  = "ledger-gist-id";
 const LS_SYNCAT  = "ledger-synced-at";
@@ -466,6 +467,7 @@ const SYNC_KEYS = [
   ["coachplan",LS_COACHPLAN],
   ["plan",    LS_PLAN],
   ["deleted", LS_DELETED],
+  ["revived", LS_REVIVED],
 ];
 const GIST_FILE = "daily-ledger.json";
 
@@ -682,6 +684,34 @@ function markDeleted(ids) {
   localStorage.setItem(LS_DELETED, JSON.stringify(pruneTombstones(t)));
   queuePush();
 }
+/* A deletion used to be permanent, so re-creating a deleted day worked
+   locally and was then undone by the old tombstone syncing back from the
+   other device. Revival records carry a timestamp and outrank any tombstone
+   older than themselves. */
+function getRevived() {
+  try { return JSON.parse(localStorage.getItem(LS_REVIVED)) || {}; } catch(e) { return {}; }
+}
+function markRevived(ids) {
+  const r = getRevived();
+  const now = new Date().toISOString();
+  (Array.isArray(ids) ? ids : [ids]).forEach(id => { if (id) r[id] = now; });
+  localStorage.setItem(LS_REVIVED, JSON.stringify(pruneTombstones(r)));
+  /* Clear the local tombstone too so the effect is immediate. */
+  const t = getDeleted();
+  let changed = false;
+  (Array.isArray(ids) ? ids : [ids]).forEach(id => { if (t[id]) { delete t[id]; changed = true; } });
+  if (changed) localStorage.setItem(LS_DELETED, JSON.stringify(t));
+  queuePush();
+}
+/* Tombstones that a later revival has not overridden. */
+function effectiveDeleted() {
+  const t = getDeleted(), r = getRevived(), out = {};
+  Object.keys(t).forEach(id => {
+    if (!r[id] || new Date(r[id]).getTime() <= new Date(t[id]).getTime()) out[id] = t[id];
+  });
+  return out;
+}
+
 function pruneTombstones(t) {
   const cutoff = Date.now() - 120*86400000;
   const out = {};
@@ -762,8 +792,17 @@ function mergeIntoLocal(remote) {
 
   /* Deletions from either device combine, so a removal on the phone isn't
      resurrected by the computer still holding the item. */
-  const dead = mergeTombstones(getDeleted(), parseOr(remote.deleted, {}));
-  localStorage.setItem(LS_DELETED, JSON.stringify(dead));
+  const allDead = mergeTombstones(getDeleted(), parseOr(remote.deleted, {}));
+  localStorage.setItem(LS_DELETED, JSON.stringify(allDead));
+  /* Revivals merge keeping the LATER timestamp, so bringing a day back wins
+     over an older deletion no matter which device did which. */
+  const localRev = getRevived(), remoteRev = parseOr(remote.revived, {});
+  const rev = Object.assign({}, localRev);
+  Object.keys(remoteRev).forEach(id => {
+    if (!rev[id] || new Date(remoteRev[id]) > new Date(rev[id])) rev[id] = remoteRev[id];
+  });
+  localStorage.setItem(LS_REVIVED, JSON.stringify(pruneTombstones(rev)));
+  const dead = effectiveDeleted();
 
   /* Diary and workouts merge item-by-item so nothing is lost either way. */
   const mergedDiary = mergeDiaries(parseOr(localStorage.getItem(LS_DIARY), {}), parseOr(remote.diary, {}), dead);
@@ -1314,10 +1353,9 @@ function pickDefaultDate() {
 function ensureDay(d) {
   if (!diary[d]) {
     diary[d] = { weightKg: null, bodyFatPct: null, meals: [], exercise: [] };
-    /* Re-creating a previously deleted day clears its tombstone, otherwise
-       the merge would keep wiping it. */
-    const t = getDeleted();
-    if (t["DAY:" + d]) { delete t["DAY:" + d]; localStorage.setItem(LS_DELETED, JSON.stringify(t)); }
+    /* Re-creating a previously deleted day must outrank the old tombstone,
+       including the copy held by the other device. */
+    if (getDeleted()["DAY:" + d] || getRevived()["DAY:" + d]) markRevived("DAY:" + d);
   }
   if (!diary[d].exercise) diary[d].exercise = []; // older saved days
   return diary[d];
@@ -2734,6 +2772,9 @@ function deleteDay(btn) {
     (day.meals||[]).forEach(m => { if (m.id) ids.push(m.id); });
     (day.exercise||[]).forEach(m => { if (m.id) ids.push(m.id); });
   }
+  const rev = getRevived();
+  ids.forEach(id => { delete rev[id]; });
+  localStorage.setItem(LS_REVIVED, JSON.stringify(rev));
   markDeleted(ids);
   delete diary[selected];
   const dates = Object.keys(diary).sort();
@@ -3182,6 +3223,19 @@ try {
 } catch(e) {
   showToast(null,{ok:false,text:"WARNING: this browser blocked storage — data will NOT persist. "+e.message});
 }
+/* One-off repair: earlier builds made day deletions permanent, so days you
+   re-added kept vanishing on sync. Clear those day-level tombstones once. */
+try {
+  if (!localStorage.getItem("ledger-daytomb-fix")) {
+    const t = getDeleted();
+    let n = 0;
+    Object.keys(t).forEach(id => { if (id.indexOf("DAY:") === 0) { delete t[id]; n++; } });
+    if (n) localStorage.setItem(LS_DELETED, JSON.stringify(t));
+    localStorage.setItem("ledger-daytomb-fix", "1");
+    if (n) { lastPushedFingerprint = ""; }
+  }
+} catch(e) {}
+
 /* Give any pre-existing items stable ids before the first merge runs. */
 if (ensureItemIds()) { try { localStorage.setItem(LS_DIARY, JSON.stringify(diary)); } catch(e) {} }
 render();
