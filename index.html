@@ -144,20 +144,20 @@
   .co-box .t { font-family:var(--serif); font-size:16px; color:var(--blue); margin-bottom:8px; }
   .co-sub { font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); line-height:1.55; }
   .co-day { background:var(--blue-panel); border:1px solid var(--blue-dim); border-radius:16px; margin-bottom:14px; overflow:hidden; box-shadow:var(--shadow); }
-  .co-day-head { display:flex; justify-content:space-between; align-items:center; padding:12px 16px; cursor:pointer; }
-  .co-day-head .n { font-family:var(--serif); font-size:15.5px; color:var(--blue); }
+  .co-day-head { display:flex; justify-content:space-between; align-items:center; gap:10px; padding:16px 18px; cursor:pointer; min-height:60px; }
+  .co-day-head .n { font-family:var(--serif); font-size:17.5px; color:var(--blue); }
   .co-day-head .m { font-family:var(--mono); font-size:11px; color:var(--ink-dim); }
   .co-day-body { padding:0 12px 12px; display:none; }
   .co-day.open .co-day-body { display:block; }
   .ex-card { display:flex; gap:14px; background:var(--blue-deep); border:1px solid var(--blue-dim); border-radius:14px; padding:14px 15px; margin-bottom:10px; }
-  .ex-fig { flex:0 0 74px; }
-  .ex-fig svg { width:74px; height:74px; display:block; }
+  .ex-fig { flex:0 0 88px; }
+  .ex-fig svg { width:88px; height:88px; display:block; background:var(--panel); border-radius:12px; }
   .ex-info { flex:1; min-width:0; }
   .ex-name { font-size:14px; font-weight:600; color:var(--ink); }
   .ex-sets { font-family:var(--mono); font-size:11.5px; color:var(--blue); margin:2px 0 5px; }
   .ex-cues { font-size:12px; color:var(--ink-dim); line-height:1.5; margin:0; padding-left:16px; }
   .ex-prog { font-family:var(--mono); font-size:10.5px; color:var(--blue); margin-top:5px; }
-  .co-btn { padding:10px 18px; border-radius:999px; cursor:pointer; font-family:var(--sans); font-size:12.5px; font-weight:700;
+  .co-btn { padding:13px 20px; border-radius:999px; cursor:pointer; font-family:var(--sans); font-size:14px; font-weight:700; min-height:46px;
     background:var(--blue); color:#FFFFFF; border:1px solid var(--blue); box-shadow:0 1px 2px rgba(18,58,90,.15); }
   .co-btn.ghost { background:transparent; color:var(--blue); box-shadow:none; }
   .co-btn:disabled { opacity:.5; }
@@ -178,12 +178,12 @@
   .ex-tick { color:#0A6C78; font-size:14px; }
   .ex-skip-tag { color:#8A6410; font-size:10.5px; font-family:var(--mono); font-weight:600; }
   .ex-hist { font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); margin-top:6px; }
-  .ex-log { display:flex; gap:5px; flex-wrap:wrap; margin-top:7px; align-items:center; }
+  .ex-log { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; align-items:flex-end; }
   .ex-log input {
-    width:66px; background:var(--panel); border:1px solid var(--blue-dim); border-radius:7px;
-    color:var(--ink); font-family:var(--mono); font-size:13px; padding:7px 8px;
+    width:78px; min-height:46px; background:var(--panel); border:1px solid var(--blue-dim); border-radius:7px;
+    color:var(--ink); font-family:var(--mono); font-size:16px; padding:10px 10px; text-align:center;
   }
-  .co-btn.sm { padding:6px 11px; font-size:11px; }
+  .co-btn.sm { padding:11px 16px; font-size:13.5px; min-height:44px; }
   .carry-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px;
     padding:7px 0; border-bottom:1px solid var(--blue-dim); font-size:13px; }
   .carry-row:last-child { border-bottom:none; }
@@ -258,6 +258,30 @@
   .tg-alts { font-size:11.5px; color:var(--amber); margin-top:5px; }
   .ex-basis { display:block; color:var(--ink-dim); font-family:var(--sans); font-size:11.5px; margin-top:3px; font-style:italic; }
   .tg-basis { font-size:11px; color:var(--ink-dim); font-style:italic; }
+  .co-more {
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.14em; color:var(--ink-dim);
+    text-transform:uppercase; margin:26px 0 10px; padding-top:14px; border-top:1px solid var(--line);
+  }
+  .coachbar {
+    position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    background:linear-gradient(rgba(233,242,250,0), var(--bg) 30%); z-index:5;
+  }
+  .coachbar .inner { max-width:960px; margin:0 auto; }
+  .coach-reply {
+    background:var(--panel); border:1px solid var(--blue-dim); border-radius:14px;
+    padding:12px 15px; margin-bottom:8px; font-size:14px; line-height:1.5; color:var(--ink);
+    max-height:34vh; overflow-y:auto; white-space:pre-wrap; box-shadow:var(--shadow); cursor:pointer;
+  }
+  #coach-send {
+    padding:0 22px; min-height:48px; border-radius:999px; cursor:pointer; background:var(--blue);
+    color:#fff; border:1px solid var(--blue); font-weight:700; font-size:14.5px; font-family:var(--sans);
+  }
+  #coach-send:disabled { background:var(--panel); color:var(--ink-dim); border-color:var(--line); }
+  #coach-q { min-height:48px; font-size:16px; }
+  .fig-key { font-family:var(--mono); font-size:10px; color:var(--ink-dim); margin:2px 4px 10px; }
+  .fk { display:inline-block; width:14px; height:0; border-top:3px solid var(--blue); vertical-align:3px; margin-right:3px; }
+  .fk.ghost { border-top:2.5px dashed var(--blue-dim); }
+  .fk.arrow { border-top:2.5px solid var(--cyan); }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -368,6 +392,16 @@
   <div id="view-data" style="display:none"></div>
 </div>
 
+<div class="coachbar" id="coachbar" style="display:none">
+  <div class="inner">
+    <div id="coach-reply" class="coach-reply" style="display:none"></div>
+    <div class="row">
+      <input id="coach-q" placeholder="Ask your coach, or say what to change…" autocomplete="off">
+      <button id="coach-send" onclick="sendCoachChat()">Ask</button>
+    </div>
+  </div>
+</div>
+
 <div class="chatbar">
   <div class="inner">
     <div class="toast" id="toast">
@@ -390,7 +424,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v26";
+const APP_VERSION = "v28";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1096,9 +1130,73 @@ function stallLength(ex) {
   return n;
 }
 
+/* ===== Starting weights =====
+   Until you've logged a lift there's nothing to progress from, so estimate a
+   conservative first working weight from bodyweight. These are fractions of
+   bodyweight for a ~3-sets-of-8-to-10 working set, deliberately on the light
+   side: it's much better to find set one easy and go up than to fail reps.
+   For "each" lifts the fraction is PER DUMBBELL. */
+const START_RATIOS = {
+  "Dumbbell bench press": 0.22, "Incline dumbbell press": 0.18,
+  "Chest fly (your squeeze machine)": 0.34, "Triceps rope pushdown": 0.30,
+  "Overhead triceps extension": 0.20, "Lat pulldown": 0.55,
+  "Seated cable row": 0.52, "Dumbbell curls": 0.13, "Hammer curls": 0.14,
+  "Face pulls": 0.20, "Goblet squat": 0.34, "Romanian deadlift": 0.25,
+  "Dumbbell shoulder press": 0.15, "Lateral raises": 0.075,
+  "EZ-bar or dumbbell curls": 0.28, "Close-grip press or bench dips": 0.45,
+};
+/* Fallback by movement type when the coach has swapped an exercise in. */
+const FIG_RATIOS = { bench:0.22, press:0.18, fly:0.30, pushdown:0.28, curl:0.13,
+                     row:0.50, pulldown:0.52, squat:0.34, plank:0, treadmill:0, run:0 };
+
+function roundToIncrement(v, inc) { return Math.max(inc, Math.round(v / inc) * inc); }
+
+function startingTarget(ex) {
+  /* Bodyweight movements still deserve a target — just not a load. */
+  if (ex.load === "body") {
+    return { weight: "", reps: "", sets: "", verdict: "START HERE",
+             why: "Bodyweight \u2014 no weight to pick. Log the time or reps you manage and beat it next time.",
+             change: null, src: "start" };
+  }
+  /* Work out bodyweight from a weigh-in, else the profile, else a sane
+     default. Previously this returned nothing when both were blank, which is
+     why new exercises showed no suggestion at all. */
+  let kg = latestWeight();
+  let guessed = false;
+  if (kg == null) {
+    const pw = parseFloat(getProfile().weight);
+    if (!isNaN(pw) && pw > 0) kg = bodyWeightToKg(getProfile().weight);
+  }
+  if (kg == null) { kg = 73; guessed = true; }
+  const bw = getUnits() === "kg" ? kg : kg * LB_PER_KG;
+  let ratio = START_RATIOS[ex.n];
+  if (ratio == null) ratio = FIG_RATIOS[ex.fig];
+  if (ratio == null) ratio = 0.20;
+  if (ratio === 0) return null;
+
+  /* Age nudge: a small reduction past 40 keeps first sessions sensible. */
+  const age = parseInt(getProfile().age, 10);
+  if (!isNaN(age) && age > 40) ratio *= (1 - Math.min((age - 40) * 0.005, 0.15));
+
+  const inc = increment(ex.n);
+  const weight = roundToIncrement(bw * ratio, inc);
+  const cap = topReps(ex.s);
+  return {
+    weight: weight,
+    reps: cap ? String(Math.max(cap - 2, 6)) : "8",
+    sets: (ex.s.match(/^(\d+)/) || [null,"3"])[1],
+    verdict: "START HERE",
+    why: guessed
+      ? "Rough estimate \u2014 add your weight under Your details for a better one. If set one feels easy, go up."
+      : "Estimated from your bodyweight, deliberately light. If set one feels easy, go up straight away.",
+    change: null,
+    src: "start",
+  };
+}
+
 function localTarget(ex) {
   const last = lastSet(ex.n);
-  if (!last || !last.weight) return null;
+  if (!last || !last.weight) return startingTarget(ex);
   const cap = topReps(ex.s);
   const lastReps = parseInt(last.reps, 10);
   const shown = parseFloat(toDisplayWeight(last.weight, setUnitOf(last)));
@@ -1443,6 +1541,15 @@ function restoreCoachState(scrollY) {
   if (scrollY != null) window.scrollTo(0, scrollY);
 }
 /* Wrapper used by every in-place Coach action. */
+/* Update ONE exercise card in place. Re-rendering the whole tab was what
+   collapsed the open day and threw you back to the top. */
+function refreshExCard(exName, dayName) {
+  const el = document.getElementById("exc-" + cssId(exName));
+  const day = getPlan().find(d => d.name === dayName);
+  const ex = day && day.ex.find(x => x.n === exName);
+  if (!el || !ex) { renderCoach(); return; }
+  el.outerHTML = exCard(ex, dayName);
+}
 function renderCoachKeepPlace() {
   const y = captureCoachState();
   renderCoach();
@@ -1465,17 +1572,17 @@ function logSet(exName, dayName) {
     sets: sEl ? sEl.value.trim() : "",
     done: true,
   });
-  try { saveWorkouts(w); showToast(null, {ok:true, text:'Logged "'+exName+'" — saved & verified.'}); }
+  try { saveWorkouts(w); showToast(null, {ok:true, text:'Logged "'+exName+'" \u2014 saved.'}); }
   catch(e) { showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: "+e.message}); }
-  renderCoachKeepPlace();
+  refreshExCard(exName, dayName);
 }
 function skipSet(exName, dayName) {
   const w = getWorkouts();
   if (!w[exName]) w[exName] = [];
   w[exName].push({ date: todayISO(), day: dayName, weight:"", reps:"", sets:"", done: false });
-  try { saveWorkouts(w); showToast(null, {ok:true, text:'"'+exName+'" marked skipped — it\'ll carry to your next session.'}); }
+  try { saveWorkouts(w); showToast(null, {ok:true, text:'"'+exName+'" skipped \u2014 carried to next session.'}); }
   catch(e) { showToast(null, {ok:false, text:"SAVE FAILED: "+e.message}); }
-  renderCoachKeepPlace();
+  refreshExCard(exName, dayName);
 }
 function undoLast(exName) {
   const w = getWorkouts();
@@ -1487,7 +1594,12 @@ function undoLast(exName) {
     }
   }
   try { saveWorkouts(w); } catch(e) {}
-  renderCoachKeepPlace();
+  const last = (getWorkouts()[exName]||[]).slice(-1)[0];
+  refreshExCard(exName, (last && last.day) || findDayNameFor(exName));
+}
+function findDayNameFor(exName) {
+  const d = getPlan().find(day => day.ex.some(x => x.n === exName));
+  return d ? d.name : "";
 }
 function cssId(s) { return s.replace(/[^a-zA-Z0-9]/g, "_"); }
 
@@ -1551,7 +1663,7 @@ function exCard(e, dayName) {
   const preR = tgt && tgt.reps ? String(tgt.reps) : (last && last.reps ? last.reps : "");
   const preS = tgt && tgt.sets ? String(tgt.sets) : (last && last.sets ? last.sets : "");
 
-  return '<div class="ex-card' + (status==="done" ? " ex-done" : status==="skipped" ? " ex-skipped" : "") + '">' +
+  return '<div class="ex-card' + (status==="done" ? " ex-done" : status==="skipped" ? " ex-skipped" : "") + '" id="exc-' + id + '">' +
     '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
     '<div class="ex-info">' +
       '<div class="ex-name">'+esc(e.n)+ (status==="done" ? ' <span class="ex-tick">✓</span>' : status==="skipped" ? ' <span class="ex-skip-tag">skipped</span>' : '') +'</div>' +
@@ -1689,6 +1801,22 @@ function progressionReport() {
   });
   return lines;
 }
+function progressionInner() {
+  const rows = progressionReport();
+  const w = getWorkouts();
+  const totalSets = Object.values(w).reduce((s,arr)=>s+arr.filter(x=>x.done).length,0);
+  if (!totalSets) return '<div class="co-sub">Nothing logged yet. Enter weight and reps on a card and tap <b>Did it</b>. After two sessions per lift the trend shows up here.</div>';
+  const stalled = rows.filter(r => r.dw <= 0 && r.span >= 3);
+  const gaining = rows.filter(r => r.dw > 0);
+  const U = getUnits();
+  return '<div class="co-sub" style="margin-bottom:8px">'+totalSets+' sets logged</div>' +
+    (gaining.length ? '<div class="co-sub" style="color:var(--blue)">\u25b2 Moving up: ' +
+      gaining.map(r=>esc(r.name)+" "+r.from+"\u2192"+r.to+" "+U).join(" \u00b7 ") + '</div>' : '') +
+    (stalled.length ? '<div class="co-sub" style="color:#8A6410;margin-top:6px">\u25a0 Stalled: ' +
+      stalled.map(r=>esc(r.name)+" at "+r.to+" "+U+" for "+r.span+" sessions").join(" \u00b7 ") + '</div>' : '') +
+    (!gaining.length && !stalled.length ? '<div class="co-sub">Log a couple more sessions per lift and the trend appears here.</div>' : '');
+}
+
 function progressionPanel() {
   const rows = progressionReport();
   const w = getWorkouts();
@@ -1776,17 +1904,48 @@ function COACH_SYSTEM() {
     "fig picks the little illustration, so choose the closest movement. Leave planEdits empty for ordinary questions.";
 }
 
+/* The coach bar sits at the bottom like the food log. It shows the most
+   recent exchange only — the full history lives behind "Coach's notes". */
+function renderCoachBar() {
+  const bar = document.getElementById("coachbar");
+  if (!bar) return;
+  const key = localStorage.getItem(LS_KEY);
+  const inp = document.getElementById("coach-q");
+  const send = document.getElementById("coach-send");
+  if (inp) inp.disabled = !key;
+  if (send) send.disabled = !key;
+  if (inp && !inp.dataset.wired) {
+    inp.dataset.wired = "1";
+    inp.addEventListener("keydown", ev => { if (ev.key === "Enter") sendCoachChat(); });
+  }
+  const h = getCoachChat();
+  const box = document.getElementById("coach-reply");
+  if (!box) return;
+  const lastA = [...h].reverse().find(m => m.role === "assistant");
+  if (lastA) {
+    box.textContent = lastA.text;
+    box.style.display = "block";
+    box.onclick = () => { box.style.display = "none"; };
+  } else {
+    box.style.display = "none";
+  }
+}
+
 async function sendCoachChat() {
   const inp = document.getElementById("coach-q");
   const key = localStorage.getItem(LS_KEY);
   if (!inp || !key) return;
   const q = inp.value.trim();
   if (!q) return;
+  let planChanged = false;
   const h = getCoachChat();
   h.push({ role: "user", text: q });
   saveCoachChat(h);
   inp.value = "";
-  renderCoach();
+  const sendBtn = document.getElementById("coach-send");
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = "\u2026"; }
+  const rb = document.getElementById("coach-reply");
+  if (rb) { rb.textContent = "Thinking\u2026"; rb.style.display = "block"; }
   try {
     const msgs = h.slice(-8).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text }));
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -1817,6 +1976,7 @@ async function sendCoachChat() {
     let applied = [];
     if (edits.length) {
       applied = applyPlanEdits(edits);
+      if (applied.length) planChanged = true;
       if (applied.length) text += "\n\n\u2713 " + applied.join("\n\u2713 ");
     }
 
@@ -1829,9 +1989,9 @@ async function sendCoachChat() {
     h2.push({ role: "assistant", text: "Error: " + e.message });
     saveCoachChat(h2);
   } finally {
-    renderCoach();
-    const sc = document.getElementById("coach-chat-scroll");
-    if (sc) sc.scrollTop = sc.scrollHeight;
+    if (planChanged) renderCoach(); else renderCoachBar();
+    const b = document.getElementById("coach-send");
+    if (b) { b.disabled = false; b.textContent = "Ask"; }
   }
 }
 
@@ -1904,68 +2064,114 @@ function clearTargets() {
 /* Simple line-art exercise figures, drawn inline so no external images are
    needed. s = stroke color. */
 function exSvg(kind) {
-  const s = "#1D6FA8", w = 'stroke="'+s+'" stroke-width="3" fill="none" stroke-linecap="round"';
-  const head = (x,y) => '<circle cx="'+x+'" cy="'+y+'" r="6" '+w+'/>';
-  const base = '<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">';
+  /* Each figure shows the START position solid, the END position as a faint
+     ghost, and an arrow for the direction of travel — so the card explains
+     the movement rather than just naming it. */
+  const s = "#1D6FA8", g = "#A8CCE5", a = "#12B3C7";
+  const L = 'stroke="'+s+'" stroke-width="3.2" fill="none" stroke-linecap="round" stroke-linejoin="round"';
+  const G = 'stroke="'+g+'" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-dasharray="4 3"';
+  const A = 'stroke="'+a+'" stroke-width="2.6" fill="none" stroke-linecap="round" marker-end="url(#ah)"';
+  const head = (x,y,c) => '<circle cx="'+x+'" cy="'+y+'" r="6.5" stroke="'+(c||s)+'" stroke-width="3.2" fill="none"/>';
+  const plate = (x,y,c) => '<circle cx="'+x+'" cy="'+y+'" r="5" fill="'+(c||s)+'"/>';
+  const open = '<svg viewBox="0 0 110 110" xmlns="http://www.w3.org/2000/svg">' +
+    '<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto">' +
+    '<path d="M0 1 L9 5 L0 9 z" fill="'+a+'"/></marker></defs>';
   const end = '</svg>';
+
   switch(kind) {
-    case "bench": return base +
-      '<line x1="15" y1="70" x2="85" y2="70" '+w+'/><line x1="25" y1="70" x2="25" y2="82" '+w+'/><line x1="75" y1="70" x2="75" y2="82" '+w+'/>' +
-      head(30,58) + '<line x1="36" y1="62" x2="68" y2="64" '+w+'/>' +
-      '<line x1="48" y1="62" x2="48" y2="40" '+w+'/><line x1="60" y1="63" x2="60" y2="40" '+w+'/>' +
-      '<line x1="34" y1="36" x2="74" y2="36" stroke="'+s+'" stroke-width="4"/><circle cx="34" cy="36" r="5" fill="'+s+'"/><circle cx="74" cy="36" r="5" fill="'+s+'"/>' + end;
-    case "press": return base +
-      head(50,30) + '<line x1="50" y1="36" x2="50" y2="66" '+w+'/>' +
-      '<line x1="50" y1="44" x2="34" y2="30" '+w+'/><line x1="50" y1="44" x2="66" y2="30" '+w+'/>' +
-      '<line x1="26" y1="22" x2="42" y2="22" stroke="'+s+'" stroke-width="4"/><line x1="58" y1="22" x2="74" y2="22" stroke="'+s+'" stroke-width="4"/>' +
-      '<line x1="50" y1="66" x2="40" y2="88" '+w+'/><line x1="50" y1="66" x2="60" y2="88" '+w+'/>' + end;
-    case "curl": return base +
-      head(50,24) + '<line x1="50" y1="30" x2="50" y2="64" '+w+'/>' +
-      '<line x1="50" y1="40" x2="36" y2="52" '+w+'/><line x1="36" y1="52" x2="40" y2="34" '+w+'/>' +
-      '<line x1="50" y1="40" x2="64" y2="52" '+w+'/><line x1="64" y1="52" x2="60" y2="34" '+w+'/>' +
-      '<circle cx="40" cy="32" r="5" fill="'+s+'"/><circle cx="60" cy="32" r="5" fill="'+s+'"/>' +
-      '<line x1="50" y1="64" x2="42" y2="88" '+w+'/><line x1="50" y1="64" x2="58" y2="88" '+w+'/>' + end;
-    case "pushdown": return base +
-      '<line x1="50" y1="8" x2="50" y2="20" '+w+'/>' +
-      head(46,30) + '<line x1="46" y1="36" x2="46" y2="66" '+w+'/>' +
-      '<line x1="46" y1="44" x2="58" y2="52" '+w+'/><line x1="58" y1="52" x2="58" y2="66" '+w+'/>' +
-      '<line x1="50" y1="66" x2="52" y2="66" '+w+'/><line x1="46" y1="66" x2="40" y2="90" '+w+'/><line x1="46" y1="66" x2="54" y2="90" '+w+'/>' +
-      '<line x1="52" y1="20" x2="64" y2="44" stroke="'+s+'" stroke-width="2" stroke-dasharray="3 3"/>' + end;
-    case "row": return base +
-      head(30,36) + '<line x1="34" y1="42" x2="52" y2="52" '+w+'/>' +
-      '<line x1="52" y1="52" x2="52" y2="72" '+w+'/><line x1="52" y1="72" x2="72" y2="72" '+w+'/>' +
-      '<line x1="40" y1="48" x2="56" y2="40" '+w+'/><circle cx="58" cy="38" r="4" fill="'+s+'"/>' +
-      '<line x1="70" y1="30" x2="70" y2="50" stroke="'+s+'" stroke-width="3"/>' + end;
-    case "pulldown": return base +
-      '<line x1="30" y1="12" x2="70" y2="12" stroke="'+s+'" stroke-width="4"/>' +
-      head(50,34) + '<line x1="50" y1="40" x2="50" y2="66" '+w+'/>' +
-      '<line x1="50" y1="46" x2="36" y2="24" '+w+'/><line x1="50" y1="46" x2="64" y2="24" '+w+'/>' +
-      '<line x1="50" y1="66" x2="42" y2="82" '+w+'/><line x1="50" y1="66" x2="58" y2="82" '+w+'/>' + end;
-    case "squat": return base +
-      '<line x1="34" y1="26" x2="66" y2="26" stroke="'+s+'" stroke-width="4"/>' +
-      head(50,20) + '<line x1="50" y1="26" x2="50" y2="52" '+w+'/>' +
-      '<line x1="50" y1="52" x2="34" y2="60" '+w+'/><line x1="34" y1="60" x2="36" y2="84" '+w+'/>' +
-      '<line x1="50" y1="52" x2="66" y2="60" '+w+'/><line x1="66" y1="60" x2="64" y2="84" '+w+'/>' + end;
-    case "plank": return base +
-      head(22,52) + '<line x1="28" y1="56" x2="72" y2="60" '+w+'/>' +
-      '<line x1="30" y1="58" x2="30" y2="74" '+w+'/><line x1="72" y1="60" x2="84" y2="76" '+w+'/>' +
-      '<line x1="16" y1="76" x2="90" y2="76" stroke="'+s+'" stroke-width="2"/>' + end;
-    case "treadmill": return base +
-      '<line x1="14" y1="80" x2="80" y2="80" stroke="'+s+'" stroke-width="4"/><line x1="80" y1="80" x2="88" y2="40" '+w+'/>' +
-      head(46,32) + '<line x1="46" y1="38" x2="48" y2="58" '+w+'/>' +
-      '<line x1="47" y1="44" x2="38" y2="54" '+w+'/><line x1="47" y1="44" x2="58" y2="50" '+w+'/>' +
-      '<line x1="48" y1="58" x2="38" y2="76" '+w+'/><line x1="48" y1="58" x2="60" y2="70" '+w+'/><line x1="60" y1="70" x2="58" y2="78" '+w+'/>' + end;
-    case "run": return base +
-      head(50,26) + '<line x1="50" y1="32" x2="54" y2="54" '+w+'/>' +
-      '<line x1="51" y1="38" x2="38" y2="46" '+w+'/><line x1="51" y1="38" x2="66" y2="34" '+w+'/>' +
-      '<line x1="54" y1="54" x2="38" y2="70" '+w+'/><line x1="38" y1="70" x2="42" y2="84" '+w+'/>' +
-      '<line x1="54" y1="54" x2="68" y2="66" '+w+'/><line x1="68" y1="66" x2="80" y2="62" '+w+'/>' + end;
-    case "fly": return base +
-      head(50,28) + '<line x1="50" y1="34" x2="50" y2="64" '+w+'/>' +
-      '<path d="M50 44 Q34 40 26 48" '+w+'/><path d="M50 44 Q66 40 74 48" '+w+'/>' +
-      '<circle cx="26" cy="48" r="5" fill="'+s+'"/><circle cx="74" cy="48" r="5" fill="'+s+'"/>' +
-      '<line x1="50" y1="64" x2="42" y2="86" '+w+'/><line x1="50" y1="64" x2="58" y2="86" '+w+'/>' + end;
-    default: return base + head(50,30) + '<line x1="50" y1="36" x2="50" y2="70" '+w+'/>' + end;
+    case "bench": return open +
+      '<line x1="14" y1="74" x2="96" y2="74" '+L+'/>' +
+      '<line x1="26" y1="74" x2="26" y2="88" '+L+'/><line x1="84" y1="74" x2="84" y2="88" '+L+'/>' +
+      head(30,62) + '<line x1="37" y1="66" x2="76" y2="68" '+L+'/>' +
+      '<line x1="52" y1="66" x2="50" y2="46" '+L+'/><line x1="66" y1="67" x2="64" y2="46" '+L+'/>' +
+      '<line x1="34" y1="44" x2="80" y2="44" stroke="'+s+'" stroke-width="4"/>' + plate(34,44) + plate(80,44) +
+      '<line x1="36" y1="24" x2="78" y2="24" '+G+'/>' +
+      '<line x1="57" y1="42" x2="57" y2="28" '+A+'/>' + end;
+
+    case "press": return open +
+      head(55,40) + '<line x1="55" y1="47" x2="55" y2="76" '+L+'/>' +
+      '<line x1="55" y1="54" x2="38" y2="46" '+L+'/><line x1="55" y1="54" x2="72" y2="46" '+L+'/>' +
+      '<line x1="30" y1="44" x2="46" y2="44" stroke="'+s+'" stroke-width="4"/>' +
+      '<line x1="64" y1="44" x2="80" y2="44" stroke="'+s+'" stroke-width="4"/>' +
+      '<line x1="30" y1="18" x2="80" y2="18" '+G+'/>' +
+      '<line x1="55" y1="38" x2="55" y2="24" '+A+'/>' +
+      '<line x1="55" y1="76" x2="46" y2="96" '+L+'/><line x1="55" y1="76" x2="64" y2="96" '+L+'/>' + end;
+
+    case "curl": return open +
+      head(55,26) + '<line x1="55" y1="33" x2="55" y2="68" '+L+'/>' +
+      '<line x1="55" y1="42" x2="40" y2="58" '+L+'/>' +
+      '<line x1="55" y1="42" x2="70" y2="58" '+L+'/>' +
+      plate(40,60) + plate(70,60) +
+      '<path d="M40 60 Q40 40 50 34" '+G+'/><path d="M70 60 Q70 40 60 34" '+G+'/>' +
+      '<path d="M34 58 Q30 42 44 32" '+A+'/>' +
+      '<line x1="55" y1="68" x2="47" y2="94" '+L+'/><line x1="55" y1="68" x2="63" y2="94" '+L+'/>' + end;
+
+    case "pushdown": return open +
+      '<line x1="55" y1="8" x2="55" y2="22" '+L+'/><line x1="42" y1="8" x2="68" y2="8" stroke="'+s+'" stroke-width="4"/>' +
+      head(48,34) + '<line x1="48" y1="41" x2="48" y2="70" '+L+'/>' +
+      '<line x1="48" y1="48" x2="60" y2="42" '+L+'/>' +
+      '<line x1="60" y1="42" x2="62" y2="58" '+G+'/>' +
+      '<line x1="66" y1="44" x2="66" y2="62" '+A+'/>' +
+      '<line x1="48" y1="70" x2="40" y2="96" '+L+'/><line x1="48" y1="70" x2="56" y2="96" '+L+'/>' + end;
+
+    case "row": return open +
+      head(30,40) + '<line x1="37" y1="44" x2="58" y2="56" '+L+'/>' +
+      '<line x1="58" y1="56" x2="58" y2="80" '+L+'/><line x1="58" y1="80" x2="80" y2="80" '+L+'/>' +
+      '<line x1="42" y1="50" x2="72" y2="46" '+G+'/>' +
+      '<line x1="42" y1="50" x2="52" y2="48" '+L+'/>' + plate(52,48) +
+      '<line x1="60" y1="46" x2="44" y2="50" '+A+'/>' +
+      '<line x1="86" y1="30" x2="86" y2="66" stroke="'+g+'" stroke-width="3"/>' + end;
+
+    case "pulldown": return open +
+      '<line x1="28" y1="12" x2="82" y2="12" stroke="'+s+'" stroke-width="4"/>' +
+      head(55,44) + '<line x1="55" y1="51" x2="55" y2="76" '+L+'/>' +
+      '<line x1="55" y1="56" x2="38" y2="40" '+L+'/><line x1="55" y1="56" x2="72" y2="40" '+L+'/>' +
+      '<line x1="36" y1="18" x2="55" y2="34" '+G+'/><line x1="74" y1="18" x2="55" y2="34" '+G+'/>' +
+      '<line x1="55" y1="26" x2="55" y2="40" '+A+'/>' +
+      '<line x1="55" y1="76" x2="46" y2="92" '+L+'/><line x1="55" y1="76" x2="64" y2="92" '+L+'/>' + end;
+
+    case "squat": return open +
+      '<line x1="34" y1="30" x2="76" y2="30" stroke="'+s+'" stroke-width="4"/>' + plate(34,30) + plate(76,30) +
+      head(55,22) + '<line x1="55" y1="30" x2="55" y2="56" '+L+'/>' +
+      '<line x1="55" y1="56" x2="40" y2="66" '+L+'/><line x1="40" y1="66" x2="42" y2="90" '+L+'/>' +
+      '<line x1="55" y1="56" x2="70" y2="66" '+L+'/><line x1="70" y1="66" x2="68" y2="90" '+L+'/>' +
+      '<path d="M55 56 L55 70" '+G+'/><path d="M40 66 L36 78" '+G+'/><path d="M70 66 L74 78" '+G+'/>' +
+      '<line x1="88" y1="44" x2="88" y2="70" '+A+'/>' + end;
+
+    case "plank": return open +
+      head(24,54) + '<line x1="31" y1="58" x2="82" y2="66" '+L+'/>' +
+      '<line x1="34" y1="60" x2="32" y2="78" '+L+'/><line x1="82" y1="66" x2="92" y2="84" '+L+'/>' +
+      '<line x1="16" y1="84" x2="98" y2="84" stroke="'+g+'" stroke-width="2.6"/>' +
+      '<line x1="40" y1="46" x2="72" y2="52" '+G+'/>' +
+      '<text x="55" y="34" fill="'+a+'" font-size="11" font-family="monospace" text-anchor="middle">hold</text>' + end;
+
+    case "treadmill": return open +
+      '<line x1="12" y1="86" x2="80" y2="86" stroke="'+s+'" stroke-width="4"/>' +
+      '<line x1="80" y1="86" x2="92" y2="40" '+L+'/>' +
+      '<line x1="14" y1="86" x2="76" y2="70" stroke="'+g+'" stroke-width="3"/>' +
+      head(46,34) + '<line x1="46" y1="41" x2="49" y2="62" '+L+'/>' +
+      '<line x1="47" y1="47" x2="36" y2="58" '+L+'/><line x1="47" y1="47" x2="60" y2="52" '+L+'/>' +
+      '<line x1="49" y1="62" x2="38" y2="80" '+L+'/><line x1="49" y1="62" x2="62" y2="74" '+L+'/>' +
+      '<line x1="20" y1="76" x2="34" y2="68" '+A+'/>' +
+      '<text x="86" y="98" fill="'+a+'" font-size="10" font-family="monospace" text-anchor="end">incline</text>' + end;
+
+    case "run": return open +
+      head(56,26) + '<line x1="56" y1="33" x2="60" y2="56" '+L+'/>' +
+      '<line x1="57" y1="40" x2="42" y2="48" '+L+'/><line x1="57" y1="40" x2="74" y2="34" '+L+'/>' +
+      '<line x1="60" y1="56" x2="42" y2="72" '+L+'/><line x1="42" y1="72" x2="46" y2="88" '+L+'/>' +
+      '<line x1="60" y1="56" x2="76" y2="68" '+L+'/><line x1="76" y1="68" x2="88" y2="64" '+L+'/>' +
+      '<line x1="16" y1="52" x2="32" y2="52" '+A+'/>' + end;
+
+    case "fly": return open +
+      head(55,28) + '<line x1="55" y1="35" x2="55" y2="70" '+L+'/>' +
+      '<path d="M55 46 Q36 42 26 52" '+L+'/><path d="M55 46 Q74 42 84 52" '+L+'/>' +
+      plate(26,52) + plate(84,52) +
+      '<path d="M55 46 Q48 34 46 26" '+G+'/><path d="M55 46 Q62 34 64 26" '+G+'/>' +
+      '<path d="M30 44 Q42 30 52 26" '+A+'/><path d="M80 44 Q68 30 58 26" '+A+'/>' +
+      '<line x1="55" y1="70" x2="47" y2="94" '+L+'/><line x1="55" y1="70" x2="63" y2="94" '+L+'/>' + end;
+
+    default: return open + head(55,32) + '<line x1="55" y1="39" x2="55" y2="76" '+L+'/>' +
+      '<line x1="55" y1="76" x2="46" y2="96" '+L+'/><line x1="55" y1="76" x2="64" y2="96" '+L+'/>' + end;
   }
 }
 
@@ -2163,61 +2369,10 @@ function renderCoach() {
   const avg = averages(loggedDates());
 
   v.innerHTML =
-    '<div class="co-box collapsible" id="cb-profile"><div class="t ch" onclick="toggleBox(\'cb-profile\')">Your profile <span class="caret">\u25be</span></div><div class="cb-body">' +
-      '<div class="unit-toggle">' +
-        '<span class="unit-label">Weight units</span>' +
-        '<button class="unit-btn'+(getUnits()==="lb"?" on":"")+'" onclick="setUnits(\'lb\')">lb</button>' +
-        '<button class="unit-btn'+(getUnits()==="kg"?" on":"")+'" onclick="setUnits(\'kg\')">kg</button>' +
-      '</div>' +
-      '<div class="co-form">' +
-        '<div class="f"><label>Age</label><input id="co-age" inputmode="numeric" value="'+esc(p.age||"")+'" placeholder="32"></div>' +
-        '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="co-height" inputmode="numeric" value="'+esc(p.height||"")+'" placeholder="'+(getUnits()==="lb"?"69":"175")+'"></div>' +
-        '<div class="f"><label>Weight '+getUnits()+'</label><input id="co-weight" inputmode="decimal" value="'+esc(p.weight || (w!=null?String(bodyWeightDisplay(w)):""))+'" placeholder="'+(getUnits()==="lb"?"161":"73")+'"></div>' +
-      '</div>' +
-      '<div class="btn-row"><button class="co-btn" onclick="saveCoachProfile()">Save profile</button></div>' +
-      (avg ? '<div class="co-sub" style="margin-top:10px">From your ledger: averaging '+avg.consumed.toLocaleString()+' kcal/day over '+avg.days+' logged days · goal '+getGoal().toLocaleString()+'.</div>' : '') +
-    '</div></div>' +
-
-    '<div class="co-box collapsible" id="cb-body"><div class="t ch" onclick="toggleBox(\'cb-body\')">Body map <span class="caret">\u25be</span></div><div class="cb-body">' +
-      '<div class="bodymap">' + bodymapSvg() +
-        '<div class="bm-legend">' +
-          '<div><span class="bm-chip" style="background:var(--blue)"></span>Tap once = <b>grow</b> this area</div>' +
-          '<div><span class="bm-chip" style="background:var(--amber)"></span>Tap twice = <b>trim</b> fat here</div>' +
-          '<div><span class="bm-chip" style="background:#DCEBF8;border:1px solid var(--blue-dim)"></span>Third tap = clear</div>' +
-          '<div style="margin-top:8px;color:var(--blue);font-family:var(--mono);font-size:11px">'+esc(bmSummary())+'</div>' +
-        '</div>' +
-      '</div>' +
-      '<div class="co-sub" style="margin-top:10px">Straight talk: you can\u2019t spot-reduce fat — \u201ctrim\u201d areas shrink through your calorie deficit, which the ledger is already tracking. What the map changes is <b>muscle emphasis</b>: \u201cgrow\u201d areas get extra volume in your plan.</div>' +
-    '</div></div>' +
-
-    '<div class="co-box collapsible" id="cb-read"><div class="t ch" onclick="toggleBox(\'cb-read\')">Coach\u2019s read <span class="caret">\u25be</span></div><div class="cb-body">' +
-      '<div class="co-plan-out">Your arms and chest aren\u2019t growing for a fixable reason: light machine work without progressive overload, likely alongside a calorie deficit. The plan below fixes the training half — every pressing and curling movement has a progression rule, and arms get hit twice a week instead of once. The deficit handles the muffin top; no exercise can target it directly. Keep protein high (roughly 130–150 g/day at your weight) so the deficit burns fat, not the muscle you\u2019re building.</div>' +
-      (key ? '<div class="btn-row">' +
-        '<button class="co-btn" id="co-ai-btn" onclick="askCoach()">'+(savedPlan?"Refresh personalized plan":"Generate personalized plan")+'</button>' +
-        '<button class="co-btn ghost" id="co-tgt-btn" onclick="refreshTargets()">Set target weights</button>' +
-        (Object.keys(getTargets()).length ? '<button class="co-btn ghost" onclick="clearTargets()">Clear targets</button>' : '') +
-      '</div>' : '<div class="co-sub" style="margin-top:8px">Add your API key in the Data tab to generate a personalized plan from your ledger data + body map.</div>') +
-      (savedPlan ? '<div class="co-plan-out" style="margin-top:12px;border-top:1px solid var(--blue-dim);padding-top:12px">'+esc(savedPlan)+'</div>' : '') +
-    '</div></div>' +
-
+    /* 1. What to do, right at the top. */
     nextUpPanel() +
-    progressionPanel() +
-
-    '<div class="co-box"><div class="t">Ask your coach</div>' +
-      '<div class="co-sub" style="margin-bottom:8px">Your coach sees your logged lifts, progression, skipped exercises, calorie averages and body map \u2014 <b>and can change your plan</b>. Try \u201cno deadlift machine, swap it for something else\u201d, \u201cadd more chest work\u201d, or \u201cam I lifting enough?\u201d</div>' +
-      '<div id="coach-chat-scroll" class="coach-chat">' + coachChatBody() + '</div>' +
-      (key ? '<div class="row" style="margin-top:8px">' +
-        '<input id="coach-q" placeholder="Ask your coach…" autocomplete="off">' +
-        '<button class="co-btn" onclick="sendCoachChat()">Ask</button>' +
-        (getCoachChat().length ? '<button class="co-btn ghost" onclick="clearCoachChat()">Clear</button>' : '') +
-      '</div>' : '<div class="co-sub">Add your API key in the Data tab to chat with your coach.</div>') +
-    '</div>' +
-
-    '<div class="co-box" style="padding-bottom:6px"><div class="t">The week — 4 days, any order</div>' +
-      '<div class="co-sub" style="margin-bottom:10px">Ask the coach to change any of this \u2014 \u201cI can\u2019t do deadlifts, swap it\u201d \u2014 and the cards update straight away. Tap a day to expand. Each card shows a <b>target</b> — automatic progression from your last session, or your coach\u2019s number once you\u2019ve tapped <b>Set target weights</b>. The boxes prefill with the target, so just adjust if reality differed, then hit <b>✓ Did it</b>. <b>Skip</b> carries the exercise forward. AZ heat note: incline walks replace outdoor runs guilt-free June–Sept; keep the 1–2 monthly 5Ks for cooler mornings.</div>' +
-      (localStorage.getItem(LS_PLAN) ? '<div class="btn-row" style="margin-top:0"><button class="co-btn ghost" onclick="resetPlan()">Reset to original plan</button></div>' : '') +
-    '</div>' +
     carryForwardPanel() +
+
     getPlan().map((day, di) => {
       const sched = dayScheduleInfo(day.name);
       return '<div class="co-day" id="co-day-'+di+'">' +
@@ -2227,18 +2382,60 @@ function renderCoach() {
           '<span class="sched-badge '+sched.state+'">'+sched.badge+'</span>' +
         '</div>' +
         '<div class="co-day-body">' +
+          '<div class="fig-key"><span class="fk solid"></span>start &nbsp;<span class="fk ghost"></span>finish &nbsp;<span class="fk arrow"></span>direction</div>' +
           day.ex.map(e => exCard(e, day.name)).join("") +
-          '<div class="btn-row"><button class="co-btn" onclick="logWorkout('+di+')">Done — log ~'+day.burn+' kcal burn to today</button></div>' +
+          '<div class="btn-row"><button class="co-btn big" onclick="logWorkout('+di+')">Finish session — log ~'+day.burn+' kcal</button></div>' +
         '</div>' +
       '</div>';
     }).join("") +
-    '<div class="co-sub" style="margin:4px 0 10px">General fitness guidance, not medical advice. Ease in if anything hurts beyond normal muscle burn.</div>';
+
+    /* 2. Everything else, folded away. */
+    '<div class="co-more">More</div>' +
+
+    '<div class="co-box collapsible" id="cb-prog"><div class="t ch" onclick="toggleBox(\'cb-prog\')">Progress <span class="caret">\u25be</span></div>' +
+      '<div class="cb-body">' + progressionInner() + '</div></div>' +
+
+    '<div class="co-box collapsible" id="cb-read"><div class="t ch" onclick="toggleBox(\'cb-read\')">Coach\u2019s notes <span class="caret">\u25be</span></div>' +
+      '<div class="cb-body">' +
+      '<div class="co-plan-out">Your arms and chest aren\u2019t growing for a fixable reason: light machine work without progressive overload, likely alongside a calorie deficit. Every pressing and curling movement here has a progression rule, and arms get hit twice a week. The deficit handles the waist \u2014 no exercise targets it directly. Keep protein high (roughly 130\u2013150 g/day) so the deficit burns fat, not the muscle you\u2019re building.</div>' +
+      (key ? '<div class="btn-row">' +
+        '<button class="co-btn" id="co-ai-btn" onclick="askCoach()">'+(savedPlan?"Refresh plan notes":"Generate plan notes")+'</button>' +
+        '<button class="co-btn ghost" id="co-tgt-btn" onclick="refreshTargets()">Set target weights</button>' +
+        (Object.keys(getTargets()).length ? '<button class="co-btn ghost" onclick="clearTargets()">Clear targets</button>' : '') +
+      '</div>' : '<div class="co-sub" style="margin-top:8px">Add your API key in the Data tab for personalised coaching.</div>') +
+      (savedPlan ? '<div class="co-plan-out" style="margin-top:12px;border-top:1px solid var(--blue-dim);padding-top:12px">'+esc(savedPlan)+'</div>' : '') +
+      (localStorage.getItem(LS_PLAN) ? '<div class="btn-row"><button class="co-btn ghost" onclick="resetPlan()">Reset to original plan</button></div>' : '') +
+      '</div></div>' +
+
+    '<div class="co-box collapsible" id="cb-body"><div class="t ch" onclick="toggleBox(\'cb-body\')">Body map <span class="caret">\u25be</span></div>' +
+      '<div class="cb-body"><div class="bodymap">' + bodymapSvg() +
+        '<div class="bm-legend">' +
+          '<div><span class="bm-chip" style="background:var(--cyan)"></span>Tap once = <b>grow</b></div>' +
+          '<div><span class="bm-chip" style="background:var(--amber)"></span>Tap twice = <b>trim</b></div>' +
+          '<div style="margin-top:8px;color:var(--blue);font-family:var(--mono);font-size:11px">'+esc(bmSummary())+'</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="co-sub" style="margin-top:10px">You can\u2019t spot-reduce fat \u2014 \u201ctrim\u201d areas shrink through your calorie deficit. The map decides where extra <b>muscle</b> volume goes.</div>' +
+      '</div></div>' +
+
+    '<div class="co-box collapsible" id="cb-profile"><div class="t ch" onclick="toggleBox(\'cb-profile\')">Your details <span class="caret">\u25be</span></div>' +
+      '<div class="cb-body">' +
+      '<div class="unit-toggle"><span class="unit-label">Units</span>' +
+        '<button class="unit-btn'+(getUnits()==="lb"?" on":"")+'" onclick="setUnits(\'lb\')">lb</button>' +
+        '<button class="unit-btn'+(getUnits()==="kg"?" on":"")+'" onclick="setUnits(\'kg\')">kg</button></div>' +
+      '<div class="co-form">' +
+        '<div class="f"><label>Age</label><input id="co-age" inputmode="numeric" value="'+esc(p.age||"")+'" placeholder="32"></div>' +
+        '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="co-height" inputmode="numeric" value="'+esc(p.height||"")+'" placeholder="'+(getUnits()==="lb"?"69":"175")+'"></div>' +
+        '<div class="f"><label>Weight '+getUnits()+'</label><input id="co-weight" inputmode="decimal" value="'+esc(p.weight || (w!=null?String(bodyWeightDisplay(w)):""))+'" placeholder="'+(getUnits()==="lb"?"161":"73")+'"></div>' +
+      '</div>' +
+      '<div class="btn-row"><button class="co-btn" onclick="saveCoachProfile()">Save</button></div>' +
+      (avg ? '<div class="co-sub" style="margin-top:10px">Averaging '+avg.consumed.toLocaleString()+' kcal/day over '+avg.days+' logged days \u00b7 goal '+getGoal().toLocaleString()+'.</div>' : '') +
+      '</div></div>' +
+
+    '<div class="co-sub" style="margin:4px 0 10px">General fitness guidance, not medical advice.</div>';
 
   restoreBoxes();
-  const cq = document.getElementById("coach-q");
-  if (cq) cq.addEventListener("keydown", ev => { if (ev.key === "Enter") sendCoachChat(); });
-  const csc = document.getElementById("coach-chat-scroll");
-  if (csc) csc.scrollTop = csc.scrollHeight;
+  renderCoachBar();
 }
 
 /* Collapsible setup panels — collapsed by default so the plan is what you
@@ -2826,6 +3023,11 @@ function switchTab(name) {
   currentTab = name;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===name));
   ["log","trends","coach","chat","notes","data"].forEach(n => document.getElementById("view-"+n).style.display = n===name ? "" : "none");
+  /* The food-log bar and the coach bar swap depending on the tab. */
+  const cb = document.getElementById("coachbar");
+  const fb = document.querySelector(".chatbar");
+  if (cb) cb.style.display = name === "coach" ? "block" : "none";
+  if (fb) fb.style.display = name === "coach" ? "none" : "block";
   render();
 }
 
