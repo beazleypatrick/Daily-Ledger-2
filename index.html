@@ -268,7 +268,7 @@
   }
   .coachbar .inner { max-width:960px; margin:0 auto; }
   .coach-reply {
-    background:var(--panel); border:1px solid var(--blue-dim); border-radius:14px;
+    position:relative; background:var(--panel); border:1px solid var(--blue-dim); border-radius:14px;
     padding:12px 15px; margin-bottom:8px; font-size:14px; line-height:1.5; color:var(--ink);
     max-height:34vh; overflow-y:auto; white-space:pre-wrap; box-shadow:var(--shadow); cursor:pointer;
   }
@@ -282,6 +282,25 @@
   .fk { display:inline-block; width:14px; height:0; border-top:3px solid var(--blue); vertical-align:3px; margin-right:3px; }
   .fk.ghost { border-top:2.5px dashed var(--blue-dim); }
   .fk.arrow { border-top:2.5px solid var(--cyan); }
+  .coach-bubble {
+    position:fixed; right:14px; bottom:calc(86px + env(safe-area-inset-bottom));
+    width:52px; height:52px; border-radius:50%; border:1px solid var(--blue);
+    background:var(--blue); color:#fff; font-size:22px; cursor:pointer; z-index:6;
+    display:none; align-items:center; justify-content:center;
+    box-shadow:0 3px 10px rgba(18,58,90,.28);
+  }
+  .coach-bubble:active { transform:scale(.94); }
+  .cr-min {
+    position:absolute; top:6px; right:8px; width:30px; height:30px; border-radius:50%;
+    border:1px solid var(--line); background:var(--panel); color:var(--ink-dim);
+    font-size:18px; line-height:1; cursor:pointer;
+  }
+  .cr-text { padding-right:34px; }
+  .done-line { font-family:var(--mono); font-size:15px; color:var(--ink); margin:4px 0 2px; }
+  .done-line b { font-size:19px; }
+  .done-tag { font-size:12px; color:#0A6C78; font-weight:700; margin-bottom:6px; }
+  .next-line { font-family:var(--mono); font-size:12px; color:var(--ink-dim); }
+  .next-line b { color:var(--blue); }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -424,7 +443,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v32";
+const APP_VERSION = "v34";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1160,18 +1179,22 @@ function stallLength(ex) {
    conservative first working weight from bodyweight. These are fractions of
    bodyweight for a ~3-sets-of-8-to-10 working set, deliberately on the light
    side: it's much better to find set one easy and go up than to fail reps.
-   For "each" lifts the fraction is PER DUMBBELL. */
+   All fractions are for the TOTAL load. */
+/* All loads are TOTAL weight — for a pair of dumbbells that means both
+   together, so 2 × 25 lb is logged as 50. Ratios below are fractions of
+   bodyweight for the total load. */
 const START_RATIOS = {
-  "Dumbbell bench press": 0.22, "Incline dumbbell press": 0.18,
+  "Dumbbell bench press": 0.44, "Incline dumbbell press": 0.36,
   "Chest fly (your squeeze machine)": 0.34, "Triceps rope pushdown": 0.30,
   "Overhead triceps extension": 0.20, "Lat pulldown": 0.55,
-  "Seated cable row": 0.52, "Dumbbell curls": 0.13, "Hammer curls": 0.14,
-  "Face pulls": 0.20, "Goblet squat": 0.34, "Romanian deadlift": 0.25,
-  "Dumbbell shoulder press": 0.15, "Lateral raises": 0.075,
+  "Seated cable row": 0.52, "Dumbbell curls": 0.26, "Hammer curls": 0.28,
+  "Face pulls": 0.20, "Goblet squat": 0.34, "Romanian deadlift": 0.50,
+  "Dumbbell shoulder press": 0.30, "Lateral raises": 0.15,
   "EZ-bar or dumbbell curls": 0.28, "Close-grip press or bench dips": 0.45,
+  "Pallof press": 0.12,
 };
 /* Fallback by movement type when the coach has swapped an exercise in. */
-const FIG_RATIOS = { bench:0.22, press:0.18, fly:0.30, pushdown:0.28, curl:0.13,
+const FIG_RATIOS = { bench:0.44, press:0.36, fly:0.30, pushdown:0.28, curl:0.26,
                      row:0.50, pulldown:0.52, squat:0.34, plank:0, treadmill:0, run:0 };
 
 function roundToIncrement(v, inc) { return Math.max(inc, Math.round(v / inc) * inc); }
@@ -1619,14 +1642,13 @@ function todayStatus(name) {
 /* Weights are ambiguous unless you say what they refer to: one dumbbell in
    each hand, or the whole bar/stack. Every exercise declares which. */
 function loadLabel(ex) {
-  if (ex.load === "each") return "each";
-  if (ex.load === "body") return "";
-  return "total";
+  return ex.load === "body" ? "" : "total";
 }
 function loadNote(ex) {
-  if (ex.load === "each") return "Weight of ONE dumbbell (what you hold in each hand)";
-  if (ex.load === "body") return "Bodyweight \u2014 leave weight blank, log time or reps";
-  return "Total weight on the bar or the machine stack";
+  if (ex.load === "body") return "Bodyweight \u2014 log time or reps, no weight";
+  return /dumbbell|curl|raise|press/i.test(ex.n)
+    ? "TOTAL weight \u2014 two 25 lb dumbbells = 50"
+    : "TOTAL weight on the bar or stack";
 }
 
 function exCard(e, dayName) {
@@ -1666,22 +1688,43 @@ function exCard(e, dayName) {
   const preR = tgt && tgt.reps ? String(tgt.reps) : (last && last.reps ? last.reps : "");
   const preS = tgt && tgt.sets ? String(tgt.sets) : (last && last.sets ? last.sets : "");
 
-  return '<div class="ex-card' + (status==="done" ? " ex-done" : status==="skipped" ? " ex-skipped" : "") + '" id="exc-' + id + '">' +
+  /* Once it's done today the card stops being a form: it shows what you
+     actually lifted, and the target becomes "next session" rather than an
+     invitation to log it again. A fresh card returns on the next session. */
+  if (status === "done") {
+    const todaySet = (getWorkouts()[e.n] || []).filter(x => x.date === todayISO() && x.done).slice(-1)[0] || {};
+    const wDisp = todaySet.weight ? toDisplayWeight(todaySet.weight, setUnitOf(todaySet)) : "";
+    return '<div class="ex-card ex-done" id="exc-' + id + '">' +
+      '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
+      '<div class="ex-info">' +
+        '<div class="ex-name">'+esc(e.n)+' <span class="ex-tick">\u2713</span></div>' +
+        '<div class="done-line">' +
+          (wDisp ? '<b>'+wDisp+'</b> '+U+' total' : '<b>bodyweight</b>') +
+          (todaySet.sets ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.sets)+'</b> sets' : '') +
+          (todaySet.reps ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.reps)+'</b> reps' : '') +
+        '</div>' +
+        '<div class="done-tag">Done today \u2014 nothing more to do here</div>' +
+        (tgt && tgt.weight !== "" ? '<div class="next-line">Next session aim: <b>'+tgt.weight+' '+U+'</b>' +
+          (tgt.reps ? ' \u00d7 '+esc(String(tgt.reps))+' reps' : '') + '</div>' : '') +
+        '<div class="ex-log"><button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button></div>' +
+      '</div></div>';
+  }
+
+  return '<div class="ex-card' + (status==="skipped" ? " ex-skipped" : "") + '" id="exc-' + id + '">' +
     '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
     '<div class="ex-info">' +
-      '<div class="ex-name">'+esc(e.n)+ (status==="done" ? ' <span class="ex-tick">✓</span>' : status==="skipped" ? ' <span class="ex-skip-tag">skipped</span>' : '') +'</div>' +
+      '<div class="ex-name">'+esc(e.n)+ (status==="skipped" ? ' <span class="ex-skip-tag">skipped</span>' : '') +'</div>' +
       '<div class="ex-sets">'+esc(e.s)+'<span class="ex-basis">'+esc(loadNote(e))+'</span></div>' +
       tgtLine +
       '<ul class="ex-cues">'+e.c.map(c=>'<li>'+esc(c)+'</li>').join("")+'</ul>' +
-      (e.p ? '<div class="ex-prog">▲ '+esc(e.p)+'</div>' : '') +
       '<div class="ex-hist">'+esc(histLine)+'</div>' +
       '<div class="ex-log">' +
-        '<div class="lf"><label>'+(loadLabel(e)?U+' '+loadLabel(e):'—')+'</label><input id="w-'+id+'" inputmode="decimal" value="'+esc(preW)+'"></div>' +
+        '<div class="lf"><label>'+(loadLabel(e)?U+' total':'\u2014')+'</label><input id="w-'+id+'" inputmode="decimal" value="'+esc(preW)+'"></div>' +
         '<div class="lf"><label>sets</label><input id="s-'+id+'" inputmode="numeric" value="'+esc(preS)+'"></div>' +
         '<div class="lf"><label>reps</label><input id="r-'+id+'" inputmode="numeric" value="'+esc(preR)+'"></div>' +
-        '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">✓ Did it</button>' +
-        '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>' +
-        (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' : '') +
+        '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
+        (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' :
+                  '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>') +
         '<button class="co-btn sm ghost" data-ex-swap="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'" title="Ask the coach to replace this">Swap</button>' +
       '</div>' +
     '</div></div>';
@@ -1848,7 +1891,7 @@ function coachContext() {
   Object.keys(diary).sort().slice(-14).forEach(d => (diary[d].exercise||[]).forEach(x => recentBurn.push(d+": "+x.name)));
   const U = getUnits();
   const hUnit = U === "lb" ? "in" : "cm";
-  return "UNITS: every weight below is in "+U+". Give all weight recommendations in "+U+" only — do not convert to or mention the other unit.\n" +
+  return "UNITS: every weight below is in "+U+", and every weight is a TOTAL (both dumbbells combined, or the whole bar/stack). Give all recommendations in "+U+" total only.\n" +
     "CLIENT: male, age "+(p.age||"32")+", height "+(p.height||"?")+" "+hUnit+", bodyweight "+(p.weight||(latestWeight()!=null?bodyWeightDisplay(latestWeight()):"?"))+" "+U+". Lives in Arizona (extreme summer heat limits outdoor running).\n" +
     "NUTRITION: calorie goal "+getGoal()+" kcal/day"+(avg?"; actually averaging "+avg.consumed+" kcal/day over "+avg.days+" logged days, net "+avg.net:"; no logged days yet")+".\n" +
     "BODY MAP GOALS — grow: "+(Object.keys(bm).filter(k=>bm[k]==="grow").join(", ")||"none marked")+"; trim: "+(Object.keys(bm).filter(k=>bm[k]==="trim").join(", ")||"none marked")+".\n" +
@@ -1879,7 +1922,7 @@ function COACH_SYSTEM() {
     '{"action":"replace","day":"exact day name from the plan","target":"exact current exercise name","exercise":{"n":"New Exercise Name","fig":"one of: bench press curl pushdown row pulldown squat plank treadmill run fly","load":"each|total|body","s":"4 × 8–10","c":["one or two short form cues"],"p":"progression rule"}}\n' +
     '{"action":"add","day":"exact day name","exercise":{ ...same shape... }}\n' +
     '{"action":"remove","day":"exact day name","target":"exact exercise name"}\n\n' +
-    "load: 'each' = weight of ONE dumbbell, 'total' = whole bar or machine stack, 'body' = bodyweight. " +
+    "load: use 'total' for anything weighted (both dumbbells combined, or the whole bar/stack) and 'body' for bodyweight. " +
     "fig picks the little illustration, so choose the closest movement. Leave planEdits empty for ordinary questions.";
 }
 
@@ -1902,25 +1945,54 @@ function renderCoachBar() {
   if (!box) return;
   const lastA = [...h].reverse().find(m => m.role === "assistant");
   if (lastA) {
-    showCoachReply(lastA.text);
+    lastCoachReply = lastA.text;
+    /* Start tucked away; the bubble brings it back. */
+    box.style.display = "none";
+    setCoachBubble(true);
   } else {
     box.style.display = "none";
+    setCoachBubble(false);
   }
 }
 
-/* The reply clears itself so it isn't sitting over the workout. Longer
-   messages get a little more time to read. */
-let coachReplyTimer = null;
+/* The reply tucks away into a bubble rather than vanishing, so you can pull
+   it back up whenever you want it. */
+let lastCoachReply = "";
 function showCoachReply(text) {
   const box = document.getElementById("coach-reply");
   if (!box) return;
-  clearTimeout(coachReplyTimer);
-  box.textContent = text;
+  lastCoachReply = text;
+  try { localStorage.setItem("ledger-last-reply", text); } catch(e) {}
+  box.innerHTML = '<button class="cr-min" onclick="event.stopPropagation();minimiseCoachReply()" title="Minimise">\u2013</button>' +
+                  '<div class="cr-text"></div>';
+  box.querySelector(".cr-text").textContent = text;
   box.style.display = "block";
-  box.onclick = () => { clearTimeout(coachReplyTimer); box.style.display = "none"; };
-  if (/Thinking/.test(text)) return; // keep the working indicator up
-  const ms = Math.min(12000, Math.max(6000, Math.round(text.length / 12) * 1000));
-  coachReplyTimer = setTimeout(() => { box.style.display = "none"; }, ms);
+  setCoachBubble(false);
+}
+function minimiseCoachReply() {
+  const box = document.getElementById("coach-reply");
+  if (box) box.style.display = "none";
+  setCoachBubble(true);
+}
+function expandCoachReply() {
+  const text = lastCoachReply || localStorage.getItem("ledger-last-reply") || "";
+  if (!text) return;
+  showCoachReply(text);
+}
+/* The little side bubble that brings the reply back. */
+function setCoachBubble(show) {
+  let b = document.getElementById("coach-bubble");
+  if (!b) {
+    b = document.createElement("button");
+    b.id = "coach-bubble";
+    b.className = "coach-bubble";
+    b.innerHTML = "\ud83d\udcac";
+    b.title = "Show your coach's last reply";
+    b.onclick = expandCoachReply;
+    document.body.appendChild(b);
+  }
+  const have = !!(lastCoachReply || localStorage.getItem("ledger-last-reply"));
+  b.style.display = (show && have && currentTab === "coach") ? "flex" : "none";
 }
 
 async function sendCoachChat() {
@@ -2000,14 +2072,14 @@ async function refreshTargets(silent) {
     getPlan().forEach(day => day.ex.forEach(e => {
       if (/walk|run/i.test(e.n)) return; // cardio has no load target
       const last = lastSet(e.n);
-      const basis = e.load === "each" ? " [weight = ONE dumbbell, per hand]" : e.load === "body" ? " [bodyweight]" : " [total bar/stack weight]";
+      const basis = e.load === "body" ? " [bodyweight]" : " [TOTAL weight — both dumbbells combined, or the whole bar/stack]";
       exList.push('"' + e.n + '"' + basis + ' (prescribed ' + e.s + (last && last.weight
         ? '; last logged ' + toDisplayWeight(last.weight, setUnitOf(last)) + U + ' × ' + (last.reps||"?") + ' reps'
         : '; never logged') + ')');
     }));
     const prompt = coachContext() +
       "\n\nSet a concrete target load for the NEXT session of each exercise below. Rules: weights in " + U + " only; " +
-      "use realistic gym increments (" + (U==="lb" ? "2.5 or 5 lb" : "1 or 2.5 kg") + "); respect each exercise's bracketed basis — for per-hand dumbbell lifts give the weight of ONE dumbbell, not the pair; if a lift has never been logged, " +
+      "use realistic gym increments (" + (U==="lb" ? "2.5 or 5 lb" : "1 or 2.5 kg") + "); all weights are TOTAL — for dumbbells that means both combined (two 25s = 50); if a lift has never been logged, " +
       "suggest a sensible conservative starting weight for this client and say it's a starting estimate; if a lift has stalled, " +
       "either nudge the load or prescribe the same weight for more reps and say so. Prioritise his marked growth areas. " +
       "Keep each 'why' under 8 words.\n\nExercises:\n" + exList.join("\n") +
@@ -2166,33 +2238,37 @@ function exSvg(kind) {
 const DEFAULT_PLAN = [
   { name: "Day 1 — Chest & Triceps", burn: 300, meta: "~50 min + incline walk", ex: [
     { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0 mph", c:["Your usual walk, shortened — just to warm up, not to tire out."], p:"" },
-    { fig:"bench", n:"Dumbbell bench press", load:"each", s:"4 × 8–10", c:["Lower to chest with control, press up hard.","Pick a weight where the last 2 reps are a genuine fight."], p:"Add 1–2 kg once you hit 4×10 clean." },
-    { fig:"press", n:"Incline dumbbell press", load:"each", s:"3 × 8–10", c:["Bench at ~30°. Builds the upper chest that shapes the shelf look."], p:"Progress same as bench." },
+    { fig:"bench", n:"Dumbbell bench press", load:"total", s:"4 × 8–10", c:["Lower to chest with control, press up hard.","Pick a weight where the last 2 reps are a genuine fight."], p:"Add 1–2 kg once you hit 4×10 clean." },
+    { fig:"press", n:"Incline dumbbell press", load:"total", s:"3 × 8–10", c:["Bench at ~30°. Builds the upper chest that shapes the shelf look."], p:"Progress same as bench." },
     { fig:"fly", n:"Chest fly (your squeeze machine)", load:"total", s:"3 × 12", c:["Now it's a finisher, not the main event.","Squeeze 1 sec at the middle."], p:"Last exercise — chase the burn, not the load." },
     { fig:"pushdown", n:"Triceps rope pushdown", load:"total", s:"3 × 10–12", c:["Elbows pinned to your sides.","Split the rope apart at the bottom."], p:"Add weight when 3×12 feels smooth." },
     { fig:"press", n:"Overhead triceps extension", load:"total", s:"3 × 10–12", c:["Hits the long head — the bulk of tricep size.","Full stretch behind the head."], p:"Slow negatives beat heavy sloppy reps." },
   ]},
-  { name: "Day 2 — Back & Biceps", burn: 300, meta: "~50 min", ex: [
+  { name: "Day 2 — Back & Biceps", burn: 310, meta: "~55 min · core finisher", ex: [
     { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
     { fig:"pulldown", n:"Lat pulldown", load:"total", s:"4 × 8–10", c:["Pull to upper chest, elbows down and back.","A wide back makes the waist look smaller — free proportion points."], p:"Add a plate when 4×10 is clean." },
     { fig:"row", n:"Seated cable row", load:"total", s:"3 × 10", c:["Chest tall, squeeze shoulder blades together."], p:"" },
-    { fig:"curl", n:"Dumbbell curls", load:"each", s:"3 × 8–10", c:["THE bicep builder — go heavier than feels polite.","No swinging; brace your core."], p:"This is where arm size comes from: +1 kg or +1 rep every week or two." },
-    { fig:"curl", n:"Hammer curls", load:"each", s:"3 × 10–12", c:["Palms facing in — thickens the arm from the side view."], p:"" },
+    { fig:"curl", n:"Dumbbell curls", load:"total", s:"3 × 8–10", c:["THE bicep builder — go heavier than feels polite.","No swinging; brace your core."], p:"This is where arm size comes from: +1 kg or +1 rep every week or two." },
+    { fig:"curl", n:"Hammer curls", load:"total", s:"3 × 10–12", c:["Palms facing in — thickens the arm from the side view."], p:"" },
     { fig:"row", n:"Face pulls", load:"total", s:"3 × 15", c:["Pull rope to your face, elbows high.","Posture + rear delts — makes everything look better."], p:"Light weight, strict form." },
+    { fig:"plank", n:"Dead bug", load:"body", s:"3 × 8 each side", c:["On your back, opposite arm and leg reach away slowly.","Lower back stays pressed to the floor the whole time."], p:"Slow it down before adding reps — 4 seconds out, 4 back." },
+    { fig:"plank", n:"Pallof press", load:"total", s:"3 × 10 each side", c:["Stand side-on to a cable, press the handle straight out from your chest.","Resist the twist — that is the whole exercise."], p:"Add weight when you stop wobbling at 3×10." },
   ]},
   { name: "Day 3 — Legs & Core", burn: 320, meta: "~45 min + optional run", ex: [
     { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
     { fig:"squat", n:"Goblet squat", load:"total", s:"4 × 10", c:["Hold a dumbbell at your chest, sit between your heels.","Legs are half your body — training them burns serious calories."], p:"Move to barbell squats when the heaviest dumbbell feels easy." },
-    { fig:"squat", n:"Romanian deadlift", load:"each", s:"3 × 10", c:["Hinge at hips, soft knees, feel the hamstring stretch."], p:"" },
+    { fig:"squat", n:"Romanian deadlift", load:"total", s:"3 × 10", c:["Hinge at hips, soft knees, feel the hamstring stretch."], p:"" },
     { fig:"plank", n:"Plank", load:"body", s:"3 × 45–60 sec", c:["Squeeze glutes, don't let hips sag.","Builds the muscle the deficit will eventually reveal."], p:"Add 10 sec when 60 feels routine." },
     { fig:"plank", n:"Side plank", load:"body", s:"2 × 30 sec each side", c:["Directly works the oblique area under the muffin top.","Remember: reveals come from the deficit, strength comes from this."], p:"" },
     { fig:"run", n:"Flat run finisher", load:"body", s:"5–10 min easy", c:["Your occasional flat run, formalized. Skip if legs are cooked."], p:"" },
   ]},
-  { name: "Day 4 — Shoulders & Arms", burn: 280, meta: "~45 min + incline walk", ex: [
-    { fig:"press", n:"Dumbbell shoulder press", load:"each", s:"4 × 8–10", c:["Capped shoulders are most of the 'ripped and proportional' look."], p:"Add weight at 4×10." },
-    { fig:"fly", n:"Lateral raises", load:"each", s:"3 × 12–15", c:["Light weight, arms to shoulder height, slight lean forward.","Width here narrows the waist visually."], p:"Reps before weight on these." },
+  { name: "Day 4 — Shoulders & Arms", burn: 295, meta: "~50 min · core finisher + walk", ex: [
+    { fig:"press", n:"Dumbbell shoulder press", load:"total", s:"4 × 8–10", c:["Capped shoulders are most of the 'ripped and proportional' look."], p:"Add weight at 4×10." },
+    { fig:"fly", n:"Lateral raises", load:"total", s:"3 × 12–15", c:["Light weight, arms to shoulder height, slight lean forward.","Width here narrows the waist visually."], p:"Reps before weight on these." },
     { fig:"curl", n:"EZ-bar or dumbbell curls", load:"total", s:"3 × 8–10", c:["Second weekly bicep hit — frequency is what your arms were missing."], p:"Track the weight. Beat it slowly." },
     { fig:"pushdown", n:"Close-grip press or bench dips", load:"total", s:"3 × 8–10", c:["Second weekly tricep hit — triceps are ⅔ of arm size."], p:"" },
+    { fig:"plank", n:"Hanging knee raise", load:"body", s:"3 × 10–12", c:["Hang from the bar, knees up to chest, no swinging.","Lower slowly — the way down does the work."], p:"When 3×12 is clean, straighten the legs a little." },
+    { fig:"plank", n:"Long-lever plank", load:"body", s:"3 × 30–40 sec", c:["Plank with elbows further forward than normal — much harder.","Ribs down, glutes tight, no sagging."], p:"Add 5 sec when 40 feels steady, or walk the elbows further out." },
     { fig:"treadmill", n:"Incline walk finisher", load:"body", s:"20–25 min · 12% · 3.0", c:["Your favourite, at full length — great low-impact burn for the AZ heat months."], p:"" },
   ]},
 ];
@@ -2246,7 +2322,7 @@ function applyPlanEdits(edits) {
   const clean = (ex) => ({
     fig: validFig.indexOf(ex.fig) !== -1 ? ex.fig : "press",
     n: String(ex.n || "Exercise").slice(0, 60),
-    load: ["each","total","body"].indexOf(ex.load) !== -1 ? ex.load : "total",
+    load: ex.load === "body" ? "body" : "total",  // everything weighted is a total
     s: String(ex.s || "3 × 8–10").slice(0, 40),
     c: Array.isArray(ex.c) ? ex.c.slice(0,3).map(x => String(x).slice(0,140)) : [],
     p: String(ex.p || "").slice(0, 140),
@@ -3023,6 +3099,8 @@ function switchTab(name) {
   const cb = document.getElementById("coachbar");
   const fb = document.querySelector(".chatbar");
   if (cb) cb.style.display = name === "coach" ? "block" : "none";
+  const bub = document.getElementById("coach-bubble");
+  if (bub && name !== "coach") bub.style.display = "none";
   if (fb) fb.style.display = name === "coach" ? "none" : "block";
   render();
 }
