@@ -424,7 +424,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v31";
+const APP_VERSION = "v32";
 
 
 const DEFAULT_GOAL = 1900;
@@ -865,6 +865,7 @@ async function syncNow(silent) {
 
     /* 2. Pull remote and merge into local. */
     setSyncStatus("Merging…");
+    const fpBefore = payloadFingerprint();
     try {
       const data = await ghFetch("https://api.github.com/gists/" + id);
       const f = data.files && data.files[GIST_FILE];
@@ -916,7 +917,13 @@ async function syncNow(silent) {
     }
 
     localStorage.setItem(LS_SYNCAT, new Date().toISOString());
-    render();
+    /* Re-rendering on every sync was collapsing menus and jumping to the top
+       each time the phone locked. Only redraw when something really changed. */
+    if (payloadFingerprint() !== fpBefore) {
+      const y = window.scrollY || document.documentElement.scrollTop || 0;
+      render();
+      window.scrollTo(0, y);
+    }
     clearSyncBanner();
     const c = syncCounts();
     refreshSyncChip();
@@ -1895,12 +1902,25 @@ function renderCoachBar() {
   if (!box) return;
   const lastA = [...h].reverse().find(m => m.role === "assistant");
   if (lastA) {
-    box.textContent = lastA.text;
-    box.style.display = "block";
-    box.onclick = () => { box.style.display = "none"; };
+    showCoachReply(lastA.text);
   } else {
     box.style.display = "none";
   }
+}
+
+/* The reply clears itself so it isn't sitting over the workout. Longer
+   messages get a little more time to read. */
+let coachReplyTimer = null;
+function showCoachReply(text) {
+  const box = document.getElementById("coach-reply");
+  if (!box) return;
+  clearTimeout(coachReplyTimer);
+  box.textContent = text;
+  box.style.display = "block";
+  box.onclick = () => { clearTimeout(coachReplyTimer); box.style.display = "none"; };
+  if (/Thinking/.test(text)) return; // keep the working indicator up
+  const ms = Math.min(12000, Math.max(6000, Math.round(text.length / 12) * 1000));
+  coachReplyTimer = setTimeout(() => { box.style.display = "none"; }, ms);
 }
 
 async function sendCoachChat() {
@@ -1958,7 +1978,7 @@ async function sendCoachChat() {
     const back = document.getElementById("coach-q");
     if (back && !back.value) { back.value = q; back.focus(); }
     const rb2 = document.getElementById("coach-reply");
-    if (rb2) { rb2.textContent = e.message + "  Your question is still in the box — tap Ask to retry."; rb2.style.display = "block"; }
+    if (rb2) showCoachReply(e.message + "  Your question is still in the box — tap Ask to retry.");
     failed = true;
   } finally {
     if (planChanged) renderCoach(); else if (!failed) renderCoachBar();
@@ -2401,6 +2421,7 @@ function renderCoach() {
     '<div class="co-sub" style="margin:4px 0 10px">General fitness guidance, not medical advice.</div>';
 
   restoreBoxes();
+  restoreOpenDays();
   renderCoachBar();
 }
 
@@ -2424,7 +2445,25 @@ function restoreBoxes() {
 }
 
 function toggleDay(di) {
-  document.getElementById("co-day-"+di).classList.toggle("open");
+  const el = document.getElementById("co-day-"+di);
+  if (!el) return;
+  el.classList.toggle("open");
+  const open = [];
+  document.querySelectorAll(".co-day.open").forEach(d => {
+    const m = /co-day-(\d+)/.exec(d.id);
+    if (m) open.push(parseInt(m[1], 10));
+  });
+  try { localStorage.setItem("ledger-open-days", JSON.stringify(open)); } catch(e) {}
+}
+/* Expanded days used to collapse on every re-render — including the one a
+   background sync triggers when you lock the phone. */
+function restoreOpenDays() {
+  let open = [];
+  try { open = JSON.parse(localStorage.getItem("ledger-open-days")) || []; } catch(e) {}
+  open.forEach(i => {
+    const el = document.getElementById("co-day-" + i);
+    if (el) el.classList.add("open");
+  });
 }function saveCoachProfile() {
   const p = {
     age: document.getElementById("co-age").value.trim(),
