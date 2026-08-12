@@ -301,6 +301,24 @@
   .done-tag { font-size:12px; color:#0A6C78; font-weight:700; margin-bottom:6px; }
   .next-line { font-family:var(--mono); font-size:12px; color:var(--ink-dim); }
   .next-line b { color:var(--blue); }
+  .burn-hint { font-family:var(--mono); font-size:12.5px; color:#0A6C78; font-weight:700; align-self:center; }
+  .goal-now { font-family:var(--mono); font-size:14px; color:var(--ink); margin-bottom:4px; }
+  .goal-now b { font-size:20px; }
+  .goal-verdict { font-size:13px; font-weight:700; line-height:1.45; }
+  .goal-math {
+    font-family:var(--mono); font-size:11.5px; color:var(--ink-dim); line-height:1.7;
+    background:var(--panel-hi); border-radius:10px; padding:10px 12px; margin:10px 0;
+  }
+  .goal-math b { color:var(--ink); }
+  .goal-opts { display:flex; gap:8px; flex-wrap:wrap; }
+  .goal-opt {
+    flex:1 1 96px; padding:11px 8px; border-radius:14px; cursor:pointer; text-align:center;
+    background:var(--panel); border:1px solid var(--line); font-family:inherit; color:var(--ink);
+  }
+  .goal-opt.on { border-color:var(--cyan); background:rgba(18,179,199,.14); }
+  .go-v { font-family:var(--mono); font-size:18px; font-weight:700; }
+  .go-l { font-size:11.5px; font-weight:700; color:var(--blue); margin-top:2px; }
+  .go-n { font-size:10.5px; color:var(--ink-dim); }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -443,7 +461,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v34";
+const APP_VERSION = "v35";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1582,12 +1600,22 @@ function refreshExCard(exName, dayName) {
   el.outerHTML = exCard(ex, dayName);
 }
 
+function updateBurnHint(inp, exName) {
+  const ex = getPlan().flatMap(d => d.ex).find(x => x.n === exName);
+  const el = document.getElementById("bh-" + cssId(exName));
+  if (ex && el) el.textContent = "\u2248 " + cardioBurn(ex, inp.value) + " kcal";
+}
+
 function logSet(exName, dayName) {
-  const wEl = document.getElementById("w-"+cssId(exName));
-  const rEl = document.getElementById("r-"+cssId(exName));
-  const sEl = document.getElementById("s-"+cssId(exName));
+  const id = cssId(exName);
+  const wEl = document.getElementById("w-"+id);
+  const rEl = document.getElementById("r-"+id);
+  const sEl = document.getElementById("s-"+id);
+  const mEl = document.getElementById("m-"+id);
+  const ex = getPlan().flatMap(d => d.ex).find(x => x.n === exName);
   const w = getWorkouts();
   if (!w[exName]) w[exName] = [];
+  const mins = mEl ? mEl.value.trim() : "";
   w[exName].push({
     id: newId(),
     date: todayISO(),
@@ -1596,8 +1624,19 @@ function logSet(exName, dayName) {
     unit: getUnits(),
     reps: rEl ? rEl.value.trim() : "",
     sets: sEl ? sEl.value.trim() : "",
+    mins: mins,
     done: true,
   });
+
+  /* Cardio also lands in the calorie log, so the treadmill actually counts. */
+  if (ex && isCardio(ex) && mins) {
+    const burn = cardioBurn(ex, mins);
+    if (burn > 0) {
+      const entry = ensureDay(todayISO());
+      entry.exercise.push({ id: newId(), name: exName + " \u2014 " + mins + " min", kcal: burn });
+      try { saveDiary(); } catch(err) {}
+    }
+  }
   try { saveWorkouts(w); showToast(null, {ok:true, text:'Logged "'+exName+'" \u2014 saved.'}); }
   catch(e) { showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: "+e.message}); }
   refreshExCard(exName, dayName);
@@ -1651,6 +1690,27 @@ function loadNote(ex) {
     : "TOTAL weight on the bar or stack";
 }
 
+/* Cardio is logged in minutes, not weight × sets × reps. */
+function isCardio(ex) {
+  return ex.fig === "treadmill" || ex.fig === "run" || /walk|run|bike|cycl|row machine|elliptical|stair/i.test(ex.n);
+}
+/* MET-based burn for the cardio we actually do, scaled to bodyweight. */
+function cardioBurn(ex, minutes) {
+  const mins = parseFloat(minutes);
+  if (isNaN(mins) || mins <= 0) return 0;
+  let kg = latestWeight();
+  if (kg == null) {
+    const pw = parseFloat(getProfile().weight);
+    kg = (!isNaN(pw) && pw > 0) ? bodyWeightToKg(getProfile().weight) : 73;
+  }
+  /* 12% incline at 3.0 mph is genuinely hard work — about 8.5 METs.
+     Easy flat running sits around 10. */
+  let met = 8.5;
+  if (/run/i.test(ex.n) || ex.fig === "run") met = 10;
+  else if (/warm-?up/i.test(ex.n)) met = 7.5;
+  return Math.round(met * 3.5 * kg / 200 * mins);
+}
+
 function exCard(e, dayName) {
   const id = cssId(e.n);
   const last = lastSet(e.n);
@@ -1694,6 +1754,19 @@ function exCard(e, dayName) {
   if (status === "done") {
     const todaySet = (getWorkouts()[e.n] || []).filter(x => x.date === todayISO() && x.done).slice(-1)[0] || {};
     const wDisp = todaySet.weight ? toDisplayWeight(todaySet.weight, setUnitOf(todaySet)) : "";
+    if (isCardio(e)) {
+      const mins = todaySet.mins || "";
+      const burned = cardioBurn(e, mins);
+      return '<div class="ex-card ex-done" id="exc-' + id + '">' +
+        '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
+        '<div class="ex-info">' +
+          '<div class="ex-name">'+esc(e.n)+' <span class="ex-tick">\u2713</span></div>' +
+          '<div class="done-line"><b>'+esc(String(mins))+'</b> min' +
+            (burned ? ' <span class="tg-x">\u00b7</span> <b>'+burned+'</b> kcal' : '') + '</div>' +
+          '<div class="done-tag">Done today \u2014 burn added to your log</div>' +
+          '<div class="ex-log"><button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button></div>' +
+        '</div></div>';
+    }
     return '<div class="ex-card ex-done" id="exc-' + id + '">' +
       '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
       '<div class="ex-info">' +
@@ -1707,6 +1780,29 @@ function exCard(e, dayName) {
         (tgt && tgt.weight !== "" ? '<div class="next-line">Next session aim: <b>'+tgt.weight+' '+U+'</b>' +
           (tgt.reps ? ' \u00d7 '+esc(String(tgt.reps))+' reps' : '') + '</div>' : '') +
         '<div class="ex-log"><button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button></div>' +
+      '</div></div>';
+  }
+
+  if (isCardio(e)) {
+    const lastMins = last && last.mins ? last.mins : "";
+    const defMins = (e.s.match(/(\d+)\s*[–-]\s*(\d+)\s*min/) || [])[2]
+                 || (e.s.match(/(\d+)\s*min/) || [])[1] || "20";
+    const preM = lastMins || defMins;
+    const est = cardioBurn(e, preM);
+    return '<div class="ex-card' + (status==="skipped" ? " ex-skipped" : "") + '" id="exc-' + id + '">' +
+      '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
+      '<div class="ex-info">' +
+        '<div class="ex-name">'+esc(e.n)+ (status==="skipped" ? ' <span class="ex-skip-tag">skipped</span>' : '') +'</div>' +
+        '<div class="ex-sets">'+esc(e.s)+'<span class="ex-basis">Log the minutes you actually did \u2014 the burn goes to your calorie log</span></div>' +
+        '<ul class="ex-cues">'+e.c.map(c=>'<li>'+esc(c)+'</li>').join("")+'</ul>' +
+        (last && last.mins ? '<div class="ex-hist">Last: '+esc(String(last.mins))+' min \u00b7 '+fmtShort(last.date)+'</div>' : '') +
+        '<div class="ex-log">' +
+          '<div class="lf"><label>minutes</label><input id="m-'+id+'" inputmode="numeric" value="'+esc(preM)+'" oninput="updateBurnHint(this,\''+esc(e.n)+'\')"></div>' +
+          '<span class="burn-hint" id="bh-'+id+'">\u2248 '+est+' kcal</span>' +
+          '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
+          (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' :
+                    '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>') +
+        '</div>' +
       '</div></div>';
   }
 
@@ -3011,10 +3107,7 @@ function renderData() {
       '<pre id="sync-diag" style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);white-space:pre-wrap;margin:10px 0 0;background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;padding:10px;display:none"></pre>' +
       (gistId() ? '<div class="hint" style="margin-top:8px;opacity:.6">Sync file: '+esc(gistId().slice(0,12))+'\u2026</div>' : '') +
     '</div>' +
-    '<div class="panel-box"><div class="t">Daily calorie goal</div>' +
-      '<input type="text" inputmode="numeric" id="goal-input" value="'+getGoal()+'">' +
-      '<div class="btn-row"><button class="btn primary" onclick="saveGoal()">Save goal</button></div>' +
-    '</div>' +
+    goalPanel() +
     '<div class="panel-box"><div class="t">Claude API key <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)">— for chat &amp; food logging</span></div>' +
       '<div class="kv"><span class="l">Status</span><span style="color:'+(key && /^sk-ant-/.test(key) ? "var(--green)" : "var(--amber)")+'">' +
         (!key ? "not set on this device" : /^sk-ant-/.test(key) ? "set (sk-ant-…"+esc(key.slice(-4))+")" : "looks wrong — not an sk-ant- key") +
@@ -3046,6 +3139,93 @@ function eraseAll(btn) {
   catch(e){ showToast(null,{ok:false,text:"Erase SAVE FAILED: "+e.message}); }
   render();
 }
+/* ===== Calorie target, worked out rather than guessed =====
+   Mifflin-St Jeor BMR, an activity multiplier, then a deficit chosen for the
+   goal. Shown transparently so the number can be judged, not just accepted. */
+function calorieModel() {
+  const p = getProfile();
+  const age = parseInt(p.age, 10) || 32;
+  let kg = latestWeight();
+  if (kg == null) {
+    const pw = parseFloat(p.weight);
+    kg = (!isNaN(pw) && pw > 0) ? bodyWeightToKg(p.weight) : 73;
+  }
+  let cm = parseFloat(p.height);
+  if (isNaN(cm) || cm <= 0) cm = 175;
+  else if (getUnits() === "lb") cm = cm * 2.54; // stored as inches
+  const bmr = Math.round(10*kg + 6.25*cm - 5*age + 5); // male
+  /* Sessions logged in the last 14 days decide the activity multiplier
+     instead of a self-assessment. */
+  const w = getWorkouts();
+  let sessions = 0;
+  const cutoff = shiftDate(todayISO(), -14);
+  const seen = new Set();
+  Object.keys(w).forEach(n => w[n].forEach(x => {
+    if (x.done && x.date >= cutoff) seen.add(x.date);
+  }));
+  sessions = seen.size;
+  const perWeek = sessions / 2;
+  let mult = 1.375, label = "lightly active";
+  if (perWeek >= 5.5) { mult = 1.6; label = "very active"; }
+  else if (perWeek >= 3.5) { mult = 1.5; label = "moderately active"; }
+  else if (perWeek >= 1.5) { mult = 1.425; label = "lightly-to-moderately active"; }
+  const maintenance = Math.round(bmr * mult);
+  return {
+    bmr, kg, cm, age, mult, label, maintenance,
+    perWeek: Math.round(perWeek * 10) / 10,
+    lean: Math.round((maintenance - 250) / 10) * 10,
+    steady: Math.round((maintenance - 500) / 10) * 10,
+    recomp: Math.round((maintenance - 150) / 10) * 10,
+    protein: Math.round(kg * 1.9),
+  };
+}
+function goalPanel() {
+  const m = calorieModel();
+  const cur = getGoal();
+  const gap = m.maintenance - cur;
+  const lbWeek = Math.round((gap * 7 / 3500) * 10) / 10;
+  let verdict, tone;
+  if (gap <= 100) { verdict = "At or above maintenance \u2014 you won't lose fat at this level."; tone = "var(--amber-dim)"; }
+  else if (gap <= 350) { verdict = "Gentle deficit. Slow fat loss, best conditions for building muscle."; tone = "var(--cyan)"; }
+  else if (gap <= 600) { verdict = "Moderate deficit. Steady fat loss; muscle gain will be slow."; tone = "var(--cyan)"; }
+  else { verdict = "Aggressive deficit. Fast loss, but you'll likely lose muscle and feel flat in the gym."; tone = "var(--red)"; }
+
+  const opt = (label, val, note) =>
+    '<button class="goal-opt'+(val===cur?" on":"")+'" onclick="setGoalTo('+val+')">' +
+      '<div class="go-v">'+val.toLocaleString()+'</div>' +
+      '<div class="go-l">'+label+'</div>' +
+      '<div class="go-n">'+note+'</div>' +
+    '</button>';
+
+  return '<div class="panel-box"><div class="t">Daily calorie goal</div>' +
+    '<div class="goal-now">Currently <b>'+cur.toLocaleString()+'</b> kcal/day</div>' +
+    '<div class="goal-verdict" style="color:'+tone+'">'+verdict+'</div>' +
+    (gap > 0 ? '<div class="co-sub" style="margin-top:4px">That\u2019s about '+Math.abs(lbWeek)+' lb/week of fat loss if you hit it consistently.</div>' : '') +
+    '<div class="goal-math">' +
+      'Resting burn (BMR): <b>'+m.bmr.toLocaleString()+'</b><br>' +
+      'You logged <b>'+m.perWeek+'</b> sessions/week recently \u2014 counted as '+m.label+' (\u00d7'+m.mult+')<br>' +
+      'Maintenance \u2248 <b>'+m.maintenance.toLocaleString()+'</b> kcal/day' +
+    '</div>' +
+    '<div class="goal-opts">' +
+      opt("Build muscle", m.recomp, "slowest fat loss") +
+      opt("Balanced", m.lean, "recommended") +
+      opt("Faster loss", m.steady, "harder in the gym") +
+    '</div>' +
+    '<div class="co-form" style="margin-top:10px"><div class="f"><label>Or set your own</label>' +
+    '<input type="text" inputmode="numeric" id="goal-input" value="'+cur+'"></div>' +
+    '<button class="btn primary" onclick="saveGoal()" style="align-self:flex-end">Save</button></div>' +
+    '<div class="hint">Aim for roughly <b>'+m.protein+' g protein/day</b> \u2014 that\u2019s what stops a deficit eating the muscle you\u2019re building. ' +
+    'These figures use your age, height and weight from the Coach tab, so fill those in for accuracy.</div>' +
+  '</div>';
+}
+function setGoalTo(v) {
+  localStorage.setItem(LS_GOAL, String(v));
+  document.getElementById("goal-label").textContent = getGoal().toLocaleString();
+  queuePush();
+  render();
+  showToast(null, {ok:true, text:"Goal set to " + v.toLocaleString() + " kcal."});
+}
+
 function saveGoal() {
   const g = parseInt(document.getElementById("goal-input").value, 10);
   if (!g || g < 500 || g > 10000) { alert("Enter a goal between 500 and 10,000 kcal."); return; }
