@@ -319,6 +319,26 @@
   .go-v { font-family:var(--mono); font-size:18px; font-weight:700; }
   .go-l { font-size:11.5px; font-weight:700; color:var(--blue); margin-top:2px; }
   .go-n { font-size:10.5px; color:var(--ink-dim); }
+  .hl { margin:8px 0 4px; }
+  .hl summary {
+    cursor:pointer; font-family:var(--mono); font-size:11.5px; color:var(--blue);
+    padding:6px 0; list-style:none; font-weight:600;
+  }
+  .hl summary::-webkit-details-marker { display:none; }
+  .hl summary::before { content:"\25b8 "; }
+  .hl[open] summary::before { content:"\25be "; }
+  .hl-body { background:var(--panel-hi); border-radius:10px; padding:8px 10px; }
+  .hl-row { display:flex; align-items:baseline; gap:8px; padding:4px 0; font-family:var(--mono); font-size:12px; }
+  .hl-row + .hl-row { border-top:1px solid var(--line); }
+  .hl-d { color:var(--ink-dim); min-width:38px; }
+  .hl-v { flex:1; color:var(--ink); }
+  .hl-a { font-weight:700; min-width:14px; text-align:right; }
+  .hl-a.up { color:#0A6C78; }
+  .hl-a.down { color:#8A6410; }
+  .hl-a.same { color:var(--ink-dim); }
+  .hl-key { font-family:var(--mono); font-size:9.5px; color:var(--ink-dim); margin-top:6px; text-align:right; }
+  .tg-verdict.down { background:var(--amber); color:#3A2C05; font-weight:700; }
+  .ex-target.down { border-color:var(--amber); background:rgba(245,195,63,.16); }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -461,7 +481,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v35";
+const APP_VERSION = "v37";
 
 
 const DEFAULT_GOAL = 1900;
@@ -480,6 +500,7 @@ const LS_UNITS = "ledger-units";
 const LS_TARGETS = "ledger-targets";
 const LS_PLAN = "ledger-plan";
 const LS_REVIVED = "ledger-revived";
+const LS_HEALTH = "ledger-health";
 const LS_GHTOKEN = "ledger-gh-token";
 const LS_GISTID  = "ledger-gist-id";
 const LS_SYNCAT  = "ledger-synced-at";
@@ -505,6 +526,7 @@ const SYNC_KEYS = [
   ["plan",    LS_PLAN],
   ["deleted", LS_DELETED],
   ["revived", LS_REVIVED],
+  ["health",  LS_HEALTH],
 ];
 const GIST_FILE = "daily-ledger.json";
 
@@ -849,7 +871,7 @@ function mergeIntoLocal(remote) {
 
   /* Single-value settings: newer side wins. */
   [["goal",LS_GOAL],["units",LS_UNITS],["profile",LS_PROFILE],["bodymap",LS_BODYMAP],
-   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN],["plan",LS_PLAN]].forEach(([name,key]) => {
+   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN],["plan",LS_PLAN],["health",LS_HEALTH]].forEach(([name,key]) => {
     if (remoteNewer && typeof remote[name] === "string") localStorage.setItem(key, remote[name]);
   });
   /* Notes: keep the longer text rather than silently dropping writing. */
@@ -1153,10 +1175,21 @@ function topReps(setsStr) {
 function isIsolation(name) {
   return /curl|raise|pushdown|extension|fly|face pull|squeeze/i.test(name);
 }
+/* Real gyms don't have 18.2 lb. Everything shown is snapped to what you can
+   actually load: multiples of 5 lb (or 2.5 kg). Dumbbell work moves in 10 lb
+   TOTAL steps, because the rack jumps 5 lb per hand. */
+function snapWeight(v) {
+  const step = getUnits() === "lb" ? 5 : 2.5;
+  const n = parseFloat(v);
+  if (isNaN(n)) return 0;
+  return Math.max(step, Math.round(n / step) * step);
+}
+function isDumbbellLift(name) {
+  return /dumbbell|db |hammer|goblet|lateral raise|fly/i.test(name);
+}
 function increment(name) {
-  const U = getUnits();
-  if (U === "lb") return isIsolation(name) ? 2.5 : 5;
-  return isIsolation(name) ? 1 : 2.5;
+  if (getUnits() === "lb") return isDumbbellLift(name) ? 10 : 5;
+  return isDumbbellLift(name) ? 4 : 2.5;
 }
 /* Local suggestion: hit the top of the rep range -> add weight; otherwise
    repeat the weight and chase one more rep. */
@@ -1215,7 +1248,6 @@ const START_RATIOS = {
 const FIG_RATIOS = { bench:0.44, press:0.36, fly:0.30, pushdown:0.28, curl:0.26,
                      row:0.50, pulldown:0.52, squat:0.34, plank:0, treadmill:0, run:0 };
 
-function roundToIncrement(v, inc) { return Math.max(inc, Math.round(v / inc) * inc); }
 
 function startingTarget(ex) {
   /* Bodyweight movements still deserve a target — just not a load. */
@@ -1244,8 +1276,7 @@ function startingTarget(ex) {
   const age = parseInt(getProfile().age, 10);
   if (!isNaN(age) && age > 40) ratio *= (1 - Math.min((age - 40) * 0.005, 0.15));
 
-  const inc = increment(ex.n);
-  const weight = roundToIncrement(bw * ratio, inc);
+  const weight = snapWeight(bw * ratio);
   const cap = topReps(ex.s);
   return {
     weight: weight,
@@ -1273,7 +1304,7 @@ function localTarget(ex) {
 
   /* Earned the increase. */
   if (cap && !isNaN(lastReps) && lastReps >= cap) {
-    const up = round1(shown + increment(ex.n));
+    const up = snapWeight(shown + increment(ex.n));
     return {
       weight: up,
       reps: cap ? String(Math.max(cap - 2, 1)) : last.reps,
@@ -1289,7 +1320,7 @@ function localTarget(ex) {
   if (stall >= 3) {
     const alts = ALTERNATIVES[ex.n];
     return {
-      weight: round1(shown),
+      weight: snapWeight(shown),
       reps: (!isNaN(lastReps) ? String(lastReps + 1) : last.reps),
       sets: last.sets || "",
       verdict: "STUCK",
@@ -1301,9 +1332,25 @@ function localTarget(ex) {
     };
   }
 
+  /* Fell well short of the range — the weight is too heavy, drop it. */
+  const floor = (ex.s.match(/(\d+)\s*[–-]\s*\d+/) || [])[1];
+  if (floor && !isNaN(lastReps) && lastReps < parseInt(floor, 10) - 1) {
+    const down = snapWeight(Math.max(shown - increment(ex.n), increment(ex.n)));
+    return {
+      weight: down,
+      reps: String(floor),
+      sets: last.sets || "",
+      verdict: "GO DOWN",
+      why: "You only managed " + lastReps + " reps, below the " + floor + " you're aiming for. Drop the weight and earn it back.",
+      change: lastLine + "  \u2193  " + down + " " + U,
+      direction: "down",
+      src: "local",
+    };
+  }
+
   /* Normal case: repeat the weight and beat the reps. */
   return {
-    weight: round1(shown),
+    weight: snapWeight(shown),
     reps: (!isNaN(lastReps) ? String(lastReps + 1) : last.reps),
     sets: last.sets || "",
     verdict: "REPEAT +1 REP",
@@ -1317,7 +1364,7 @@ function targetFor(ex) {
   const t = getTargets()[ex.n];
   if (t && t.weight) {
     return {
-      weight: round1(parseFloat(toDisplayWeight(t.weight, t.unit === "kg" ? "kg" : "lb"))),
+      weight: snapWeight(parseFloat(toDisplayWeight(t.weight, t.unit === "kg" ? "kg" : "lb"))),
       reps: t.reps || "",
       sets: t.sets || "",
       verdict: "COACH",
@@ -1711,6 +1758,36 @@ function cardioBurn(ex, minutes) {
   return Math.round(met * 3.5 * kg / 200 * mins);
 }
 
+/* A short log per exercise so you can see at a glance whether the weight is
+   climbing, flat or dropping. Newest first, with the direction marked. */
+function historyBlock(ex) {
+  const h = exHistory(ex.n).slice(-5).reverse();
+  if (!h.length) return "";
+  const U = getUnits();
+  const cardio = isCardio(ex);
+  const rows = h.map((sRec, i) => {
+    const older = h[i+1];
+    let dir = "", cls = "same";
+    if (!cardio && older && sRec.weight && older.weight) {
+      const a = weightInKg(sRec), b = weightInKg(older);
+      if (a > b + 0.2) { dir = "\u2191"; cls = "up"; }
+      else if (a < b - 0.2) { dir = "\u2193"; cls = "down"; }
+      else { dir = "="; cls = "same"; }
+    }
+    const detail = cardio
+      ? (sRec.mins ? sRec.mins + " min" : "\u2014")
+      : (sRec.weight ? toDisplayWeight(sRec.weight, setUnitOf(sRec)) + " " + U : "bodyweight") +
+        (sRec.sets ? " \u00d7 " + sRec.sets : "") + (sRec.reps ? " \u00d7 " + sRec.reps : "");
+    return '<div class="hl-row"><span class="hl-d">'+fmtShort(sRec.date)+'</span>' +
+      '<span class="hl-v">'+esc(detail)+'</span>' +
+      '<span class="hl-a '+cls+'">'+dir+'</span></div>';
+  }).join("");
+  return '<details class="hl"><summary>Last '+h.length+' session'+(h.length===1?"":"s")+'</summary>' +
+    '<div class="hl-body">' + rows +
+    (cardio ? '' : '<div class="hl-key">weight \u00d7 sets \u00d7 reps</div>') +
+    '</div></details>';
+}
+
 function exCard(e, dayName) {
   const id = cssId(e.n);
   const last = lastSet(e.n);
@@ -1730,8 +1807,8 @@ function exCard(e, dayName) {
 
   const tgt = targetFor(e);
   const tgtLine = tgt
-    ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+(tgt.verdict==="STUCK"?" stuck":"")+'">' +
-      '<div class="tg-head">NEXT TIME <span class="tg-verdict '+(tgt.verdict==="GO UP"?"up":tgt.verdict==="STUCK"?"stuck":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
+    ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+(tgt.verdict==="STUCK"?" stuck":"")+(tgt.verdict==="GO DOWN"?" down":"")+'">' +
+      '<div class="tg-head">NEXT TIME <span class="tg-verdict '+(tgt.verdict==="GO UP"?"up":tgt.verdict==="STUCK"?"stuck":tgt.verdict==="GO DOWN"?"down":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
       '<div class="tg-nums"><b>'+tgt.weight+'</b> '+U+(loadLabel(e)?' <span class="tg-basis">'+loadLabel(e)+'</span>':'')+
         (tgt.sets ? ' <span class="tg-x">×</span> <b>'+esc(String(tgt.sets))+'</b> sets' : '') +
         (tgt.reps ? ' <span class="tg-x">×</span> <b>'+esc(String(tgt.reps))+'</b> reps' : '') +
@@ -1777,6 +1854,7 @@ function exCard(e, dayName) {
           (todaySet.reps ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.reps)+'</b> reps' : '') +
         '</div>' +
         '<div class="done-tag">Done today \u2014 nothing more to do here</div>' +
+        historyBlock(e) +
         (tgt && tgt.weight !== "" ? '<div class="next-line">Next session aim: <b>'+tgt.weight+' '+U+'</b>' +
           (tgt.reps ? ' \u00d7 '+esc(String(tgt.reps))+' reps' : '') + '</div>' : '') +
         '<div class="ex-log"><button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button></div>' +
@@ -1795,7 +1873,7 @@ function exCard(e, dayName) {
         '<div class="ex-name">'+esc(e.n)+ (status==="skipped" ? ' <span class="ex-skip-tag">skipped</span>' : '') +'</div>' +
         '<div class="ex-sets">'+esc(e.s)+'<span class="ex-basis">Log the minutes you actually did \u2014 the burn goes to your calorie log</span></div>' +
         '<ul class="ex-cues">'+e.c.map(c=>'<li>'+esc(c)+'</li>').join("")+'</ul>' +
-        (last && last.mins ? '<div class="ex-hist">Last: '+esc(String(last.mins))+' min \u00b7 '+fmtShort(last.date)+'</div>' : '') +
+        historyBlock(e) +
         '<div class="ex-log">' +
           '<div class="lf"><label>minutes</label><input id="m-'+id+'" inputmode="numeric" value="'+esc(preM)+'" oninput="updateBurnHint(this,\''+esc(e.n)+'\')"></div>' +
           '<span class="burn-hint" id="bh-'+id+'">\u2248 '+est+' kcal</span>' +
@@ -1814,6 +1892,7 @@ function exCard(e, dayName) {
       tgtLine +
       '<ul class="ex-cues">'+e.c.map(c=>'<li>'+esc(c)+'</li>').join("")+'</ul>' +
       '<div class="ex-hist">'+esc(histLine)+'</div>' +
+      historyBlock(e) +
       '<div class="ex-log">' +
         '<div class="lf"><label>'+(loadLabel(e)?U+' total':'\u2014')+'</label><input id="w-'+id+'" inputmode="decimal" value="'+esc(preW)+'"></div>' +
         '<div class="lf"><label>sets</label><input id="s-'+id+'" inputmode="numeric" value="'+esc(preS)+'"></div>' +
@@ -2175,7 +2254,7 @@ async function refreshTargets(silent) {
     }));
     const prompt = coachContext() +
       "\n\nSet a concrete target load for the NEXT session of each exercise below. Rules: weights in " + U + " only; " +
-      "use realistic gym increments (" + (U==="lb" ? "2.5 or 5 lb" : "1 or 2.5 kg") + "); all weights are TOTAL — for dumbbells that means both combined (two 25s = 50); if a lift has never been logged, " +
+      "every weight MUST be a multiple of " + (U==="lb" ? "5 lb (standard American plates and dumbbells — never 18.2 or 22.5)" : "2.5 kg") + "; all weights are TOTAL — for dumbbells that means both combined (two 25s = 50); if a lift has never been logged, " +
       "suggest a sensible conservative starting weight for this client and say it's a starting estimate; if a lift has stalled, " +
       "either nudge the load or prescribe the same weight for more reps and say so. Prioritise his marked growth areas. " +
       "Keep each 'why' under 8 words.\n\nExercises:\n" + exList.join("\n") +
@@ -2193,8 +2272,9 @@ async function refreshTargets(silent) {
     let n = 0;
     (parsed.targets || []).forEach(x => {
       if (!x || !valid.has(x.name)) return;
-      const wNum = parseFloat(x.weight);
+      let wNum = parseFloat(x.weight);
       if (isNaN(wNum) || wNum <= 0) return;
+      wNum = snapWeight(wNum); // never trust it to round properly
       t[x.name] = { weight: wNum, unit: U, reps: x.reps || "", sets: x.sets || "", why: x.why || "", setAt: todayISO() };
       n++;
     });
@@ -3107,6 +3187,23 @@ function renderData() {
       '<pre id="sync-diag" style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim);white-space:pre-wrap;margin:10px 0 0;background:var(--panel-hi);border:1px solid var(--line);border-radius:8px;padding:10px;display:none"></pre>' +
       (gistId() ? '<div class="hint" style="margin-top:8px;opacity:.6">Sync file: '+esc(gistId().slice(0,12))+'\u2026</div>' : '') +
     '</div>' +
+    (function(){
+      const avg = healthAverage(28);
+      const total = Object.keys(getHealth()).length;
+      return '<div class="panel-box"><div class="t">Phone health data</div>' +
+        (avg
+          ? '<div class="kv"><span class="l">Average daily burn</span><span style="color:var(--cyan)"><b>'+avg.kcal.toLocaleString()+'</b> kcal</span></div>' +
+            (avg.steps ? '<div class="kv"><span class="l">Average steps</span><span>'+avg.steps.toLocaleString()+'</span></div>' : '') +
+            '<div class="kv"><span class="l">Days imported</span><span>'+total+'</span></div>'
+          : '<div class="co-sub">Nothing imported yet.</div>') +
+        '<div class="hint" id="health-status" style="margin-top:8px"></div>' +
+        '<input type="file" id="health-file" accept=".csv,text/csv" onchange="importHealthFile(this)" style="margin-top:10px;font-size:13px;color:var(--ink-dim)">' +
+        (total ? '<div class="btn-row"><button class="btn danger" onclick="clearHealth()">Clear imported data</button></div>' : '') +
+        '<div class="hint"><b>How to get the file:</b> go to <b>takeout.google.com</b>, deselect everything, tick only <b>Fit</b> (or <b>Health Connect</b>), and export. ' +
+        'Unzip it and upload <b>Daily activity metrics.csv</b> from the Fit folder. Samsung Health and Fitbit CSV exports work too.<br>' +
+        'A live connection isn\u2019t possible \u2014 Google closed the Fit API to new apps in 2024 and its replacement is Android-only, so an export file is the way in.</div>' +
+      '</div>';
+    })() +
     goalPanel() +
     '<div class="panel-box"><div class="t">Claude API key <span style="font-family:var(--mono);font-size:10.5px;color:var(--ink-dim)">— for chat &amp; food logging</span></div>' +
       '<div class="kv"><span class="l">Status</span><span style="color:'+(key && /^sk-ant-/.test(key) ? "var(--green)" : "var(--amber)")+'">' +
@@ -3169,9 +3266,18 @@ function calorieModel() {
   if (perWeek >= 5.5) { mult = 1.6; label = "very active"; }
   else if (perWeek >= 3.5) { mult = 1.5; label = "moderately active"; }
   else if (perWeek >= 1.5) { mult = 1.425; label = "lightly-to-moderately active"; }
-  const maintenance = Math.round(bmr * mult);
+  let maintenance = Math.round(bmr * mult);
+  let source = "estimated from your logged sessions";
+  /* A real measurement from your phone beats an activity multiplier. */
+  const meas = healthAverage(28);
+  if (meas && meas.days >= 5) {
+    maintenance = meas.kcal;
+    source = "measured by your phone over " + meas.days + " days";
+  }
   return {
-    bmr, kg, cm, age, mult, label, maintenance,
+    bmr, kg, cm, age, mult, label, maintenance, source,
+    measured: meas,
+    formulaMaintenance: Math.round(bmr * mult),
     perWeek: Math.round(perWeek * 10) / 10,
     lean: Math.round((maintenance - 250) / 10) * 10,
     steady: Math.round((maintenance - 500) / 10) * 10,
@@ -3203,8 +3309,12 @@ function goalPanel() {
     (gap > 0 ? '<div class="co-sub" style="margin-top:4px">That\u2019s about '+Math.abs(lbWeek)+' lb/week of fat loss if you hit it consistently.</div>' : '') +
     '<div class="goal-math">' +
       'Resting burn (BMR): <b>'+m.bmr.toLocaleString()+'</b><br>' +
-      'You logged <b>'+m.perWeek+'</b> sessions/week recently \u2014 counted as '+m.label+' (\u00d7'+m.mult+')<br>' +
-      'Maintenance \u2248 <b>'+m.maintenance.toLocaleString()+'</b> kcal/day' +
+      (m.measured && m.measured.days >= 5
+        ? 'Phone-measured daily burn: <b>'+m.measured.kcal.toLocaleString()+'</b> over '+m.measured.days+' days' +
+          (m.measured.steps ? ' (avg '+m.measured.steps.toLocaleString()+' steps)' : '') + '<br>' +
+          '<span style="opacity:.7">Formula estimate for comparison: '+m.formulaMaintenance.toLocaleString()+'</span><br>'
+        : 'You logged <b>'+m.perWeek+'</b> sessions/week recently \u2014 counted as '+m.label+' (\u00d7'+m.mult+')<br>') +
+      'Maintenance \u2248 <b>'+m.maintenance.toLocaleString()+'</b> kcal/day <span style="opacity:.7">('+m.source+')</span>' +
     '</div>' +
     '<div class="goal-opts">' +
       opt("Build muscle", m.recomp, "slowest fat loss") +
@@ -3224,6 +3334,125 @@ function setGoalTo(v) {
   queuePush();
   render();
   showToast(null, {ok:true, text:"Goal set to " + v.toLocaleString() + " kcal."});
+}
+
+/* ===== Imported health data (Google Takeout / Fit / Samsung etc.) =====
+   A live connection isn't possible: Google stopped new Fit API signups in
+   2024 and Health Connect is Android-native. So we import an export file.
+   Stored as { "YYYY-MM-DD": {kcal, steps} }. */
+function getHealth() {
+  try { return JSON.parse(localStorage.getItem(LS_HEALTH)) || {}; } catch(e) { return {}; }
+}
+function saveHealth(h) {
+  localStorage.setItem(LS_HEALTH, JSON.stringify(h));
+  queuePush();
+}
+
+/* Split a CSV line, honouring quoted fields. */
+function csvSplit(line) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') { if (q && line[i+1] === '"') { cur += '"'; i++; } else q = !q; }
+    else if (c === "," && !q) { out.push(cur); cur = ""; }
+    else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+function normaliseDate(v) {
+  if (!v) return null;
+  v = String(v).trim();
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1]+"-"+m[2]+"-"+m[3];
+  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);   // US M/D/YYYY
+  if (m) return m[3]+"-"+String(m[1]).padStart(2,"0")+"-"+String(m[2]).padStart(2,"0");
+  const d = new Date(v);
+  if (!isNaN(d.getTime())) {
+    return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+  }
+  return null;
+}
+
+/* Accepts Google Takeout "Daily activity metrics" CSVs and most similar
+   exports — we look for the columns rather than assume a fixed layout. */
+function parseHealthCsv(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { rows: {}, error: "That file has no data rows." };
+  const head = csvSplit(lines[0]).map(h => h.trim().toLowerCase());
+  const findCol = (...pats) => head.findIndex(h => pats.some(p => h.includes(p)));
+  const dCol = findCol("date", "day", "time");
+  const cCol = findCol("calorie", "energy", "kcal");
+  const sCol = findCol("step");
+  const mCol = findCol("move minutes", "active minutes", "duration");
+  if (dCol === -1) return { rows: {}, error: "Couldn't find a date column. Columns seen: " + head.join(", ") };
+  if (cCol === -1 && sCol === -1) return { rows: {}, error: "Couldn't find a calories or steps column. Columns seen: " + head.join(", ") };
+
+  const rows = {};
+  for (let i = 1; i < lines.length; i++) {
+    const f = csvSplit(lines[i]);
+    const date = normaliseDate(f[dCol]);
+    if (!date) continue;
+    const kcal = cCol !== -1 ? Math.round(parseFloat(f[cCol])) : null;
+    const steps = sCol !== -1 ? Math.round(parseFloat(f[sCol])) : null;
+    const mins = mCol !== -1 ? Math.round(parseFloat(f[mCol])) : null;
+    const rec = {};
+    if (kcal && !isNaN(kcal) && kcal > 0) rec.kcal = kcal;
+    if (steps && !isNaN(steps) && steps > 0) rec.steps = steps;
+    if (mins && !isNaN(mins) && mins > 0) rec.mins = mins;
+    if (Object.keys(rec).length) {
+      /* Takeout sometimes has several rows per day; keep the largest. */
+      const prev = rows[date];
+      rows[date] = prev ? {
+        kcal: Math.max(prev.kcal||0, rec.kcal||0) || undefined,
+        steps: Math.max(prev.steps||0, rec.steps||0) || undefined,
+        mins: Math.max(prev.mins||0, rec.mins||0) || undefined,
+      } : rec;
+    }
+  }
+  return { rows, error: Object.keys(rows).length ? null : "No usable rows found in that file." };
+}
+
+function importHealthFile(input) {
+  const file = input.files && input.files[0];
+  const out = document.getElementById("health-status");
+  if (!file) return;
+  if (out) out.textContent = "Reading " + file.name + "\u2026";
+  const r = new FileReader();
+  r.onload = () => {
+    try {
+      const res = parseHealthCsv(String(r.result));
+      if (res.error) { if (out) out.textContent = res.error; return; }
+      const merged = Object.assign({}, getHealth(), res.rows);
+      saveHealth(merged);
+      const days = Object.keys(res.rows).length;
+      const avg = healthAverage(28);
+      if (out) out.textContent = "Imported " + days + " days. " +
+        (avg ? "Your average daily burn: " + avg.kcal.toLocaleString() + " kcal." : "");
+      render();
+      showToast(null, {ok:true, text:"Imported " + days + " days of health data."});
+    } catch(e) {
+      if (out) out.textContent = "Couldn't read that file: " + e.message;
+    }
+  };
+  r.onerror = () => { if (out) out.textContent = "Couldn't read that file."; };
+  r.readAsText(file);
+}
+function clearHealth() {
+  localStorage.removeItem(LS_HEALTH);
+  render();
+  showToast(null, {ok:true, text:"Imported health data cleared."});
+}
+/* Average measured burn over the last n days that have data. */
+function healthAverage(n) {
+  const h = getHealth();
+  const cutoff = shiftDate(todayISO(), -(n || 28));
+  const days = Object.keys(h).filter(d => d >= cutoff && h[d].kcal);
+  if (!days.length) return null;
+  const kcal = Math.round(days.reduce((s,d) => s + h[d].kcal, 0) / days.length);
+  const stepDays = days.filter(d => h[d].steps);
+  const steps = stepDays.length ? Math.round(stepDays.reduce((s,d) => s + h[d].steps, 0) / stepDays.length) : null;
+  return { kcal, steps, days: days.length };
 }
 
 function saveGoal() {
