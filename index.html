@@ -205,8 +205,6 @@
   }
   .ex-target.coach { background:rgba(18,179,199,.16); border-color:var(--blue); }
   .tg-head { font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--blue); margin-bottom:4px; }
-  .tg-nums { font-family:var(--mono); font-size:14px; color:var(--ink-dim); line-height:1.4; }
-  .tg-nums b { color:var(--ink); font-size:20px; font-weight:700; }
   .tg-x { color:var(--blue-dim); padding:0 2px; }
   .tg-why { font-size:12px; color:var(--ink-dim); font-style:italic; margin-top:4px; }
   .ex-log .lf { display:flex; flex-direction:column; gap:3px; }
@@ -339,6 +337,13 @@
   .hl-key { font-family:var(--mono); font-size:9.5px; color:var(--ink-dim); margin-top:6px; text-align:right; }
   .tg-verdict.down { background:var(--amber); color:#3A2C05; font-weight:700; }
   .ex-target.down { border-color:var(--amber); background:rgba(245,195,63,.16); }
+  .tg-big { font-family:var(--mono); font-size:15px; color:var(--ink-dim); margin:6px 0 2px; letter-spacing:.02em; }
+  .tg-big b { font-size:30px; color:var(--ink); font-weight:700; }
+  .tg-hand { font-family:var(--mono); font-size:14px; color:#0A6C78; margin-bottom:4px; }
+  .tg-hand b { font-size:17px; }
+  .tg-sr { font-family:var(--mono); font-size:15px; color:var(--ink-dim); margin-top:2px; }
+  .tg-sr b { font-size:20px; color:var(--ink); }
+  .dl-hand { font-size:13px; color:#0A6C78; }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -481,7 +486,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v37";
+const APP_VERSION = "v38";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1178,14 +1183,24 @@ function isIsolation(name) {
 /* Real gyms don't have 18.2 lb. Everything shown is snapped to what you can
    actually load: multiples of 5 lb (or 2.5 kg). Dumbbell work moves in 10 lb
    TOTAL steps, because the rack jumps 5 lb per hand. */
-function snapWeight(v) {
-  const step = getUnits() === "lb" ? 5 : 2.5;
+/* Snap to what exists on a rack. For a PAIR of dumbbells the total must be a
+   multiple of 10 lb, so each hand lands on a real 5 lb dumbbell. */
+function snapWeight(v, ex) {
+  const pair = isPairLift(ex);
+  const step = getUnits() === "lb" ? (pair ? 10 : 5) : (pair ? 5 : 2.5);
   const n = parseFloat(v);
   if (isNaN(n)) return 0;
   return Math.max(step, Math.round(n / step) * step);
 }
+/* Only exercises explicitly flagged pair:1 use two dumbbells. A goblet squat
+   is one dumbbell; a machine is a stack. Guessing from the name got this
+   wrong, so the plan says so directly. */
+function isPairLift(ex) {
+  return !!(ex && ex.pair);
+}
 function isDumbbellLift(name) {
-  return /dumbbell|db |hammer|goblet|lateral raise|fly/i.test(name);
+  const ex = getPlan().flatMap(d => d.ex).find(x => x.n === name);
+  return isPairLift(ex);
 }
 function increment(name) {
   if (getUnits() === "lb") return isDumbbellLift(name) ? 10 : 5;
@@ -1276,7 +1291,7 @@ function startingTarget(ex) {
   const age = parseInt(getProfile().age, 10);
   if (!isNaN(age) && age > 40) ratio *= (1 - Math.min((age - 40) * 0.005, 0.15));
 
-  const weight = snapWeight(bw * ratio);
+  const weight = snapWeight(bw * ratio, ex);
   const cap = topReps(ex.s);
   return {
     weight: weight,
@@ -1304,7 +1319,7 @@ function localTarget(ex) {
 
   /* Earned the increase. */
   if (cap && !isNaN(lastReps) && lastReps >= cap) {
-    const up = snapWeight(shown + increment(ex.n));
+    const up = snapWeight(shown + increment(ex.n), ex);
     return {
       weight: up,
       reps: cap ? String(Math.max(cap - 2, 1)) : last.reps,
@@ -1320,7 +1335,7 @@ function localTarget(ex) {
   if (stall >= 3) {
     const alts = ALTERNATIVES[ex.n];
     return {
-      weight: snapWeight(shown),
+      weight: snapWeight(shown, ex),
       reps: (!isNaN(lastReps) ? String(lastReps + 1) : last.reps),
       sets: last.sets || "",
       verdict: "STUCK",
@@ -1335,7 +1350,7 @@ function localTarget(ex) {
   /* Fell well short of the range — the weight is too heavy, drop it. */
   const floor = (ex.s.match(/(\d+)\s*[–-]\s*\d+/) || [])[1];
   if (floor && !isNaN(lastReps) && lastReps < parseInt(floor, 10) - 1) {
-    const down = snapWeight(Math.max(shown - increment(ex.n), increment(ex.n)));
+    const down = snapWeight(Math.max(shown - increment(ex.n), increment(ex.n)), ex);
     return {
       weight: down,
       reps: String(floor),
@@ -1350,7 +1365,7 @@ function localTarget(ex) {
 
   /* Normal case: repeat the weight and beat the reps. */
   return {
-    weight: snapWeight(shown),
+    weight: snapWeight(shown, ex),
     reps: (!isNaN(lastReps) ? String(lastReps + 1) : last.reps),
     sets: last.sets || "",
     verdict: "REPEAT +1 REP",
@@ -1364,7 +1379,7 @@ function targetFor(ex) {
   const t = getTargets()[ex.n];
   if (t && t.weight) {
     return {
-      weight: snapWeight(parseFloat(toDisplayWeight(t.weight, t.unit === "kg" ? "kg" : "lb"))),
+      weight: snapWeight(parseFloat(toDisplayWeight(t.weight, t.unit === "kg" ? "kg" : "lb")), ex),
       reps: t.reps || "",
       sets: t.sets || "",
       verdict: "COACH",
@@ -1731,10 +1746,10 @@ function loadLabel(ex) {
   return ex.load === "body" ? "" : "total";
 }
 function loadNote(ex) {
-  if (ex.load === "body") return "Bodyweight \u2014 log time or reps, no weight";
-  return /dumbbell|curl|raise|press/i.test(ex.n)
-    ? "TOTAL weight \u2014 two 25 lb dumbbells = 50"
-    : "TOTAL weight on the bar or stack";
+  if (ex.load === "body") return "No weight \u2014 just log the reps or time";
+  return isPairLift(ex)
+    ? "Enter the TOTAL of both dumbbells added together"
+    : "Enter the TOTAL weight on the bar or machine";
 }
 
 /* Cardio is logged in minutes, not weight × sets × reps. */
@@ -1788,6 +1803,13 @@ function historyBlock(ex) {
     '</div></details>';
 }
 
+function perHandOf(v) {
+  const n = parseFloat(v);
+  if (isNaN(n)) return null;
+  const half = n / 2;
+  return (half % 5 === 0) ? half : Math.round(half * 10) / 10;
+}
+
 function exCard(e, dayName) {
   const id = cssId(e.n);
   const last = lastSet(e.n);
@@ -1806,12 +1828,23 @@ function exCard(e, dayName) {
     : "No sets logged yet — log today's to start tracking.";
 
   const tgt = targetFor(e);
+  const pair = isPairLift(e);
+  const perHand = (v) => {
+    const n = parseFloat(v);
+    if (isNaN(n)) return null;
+    const half = n / 2;
+    return (half % 5 === 0) ? half : Math.round(half * 10) / 10;
+  };
   const tgtLine = tgt
     ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+(tgt.verdict==="STUCK"?" stuck":"")+(tgt.verdict==="GO DOWN"?" down":"")+'">' +
-      '<div class="tg-head">NEXT TIME <span class="tg-verdict '+(tgt.verdict==="GO UP"?"up":tgt.verdict==="STUCK"?"stuck":tgt.verdict==="GO DOWN"?"down":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
-      '<div class="tg-nums"><b>'+tgt.weight+'</b> '+U+(loadLabel(e)?' <span class="tg-basis">'+loadLabel(e)+'</span>':'')+
-        (tgt.sets ? ' <span class="tg-x">×</span> <b>'+esc(String(tgt.sets))+'</b> sets' : '') +
-        (tgt.reps ? ' <span class="tg-x">×</span> <b>'+esc(String(tgt.reps))+'</b> reps' : '') +
+      '<div class="tg-head">TODAY <span class="tg-verdict '+(tgt.verdict==="GO UP"?"up":tgt.verdict==="STUCK"?"stuck":tgt.verdict==="GO DOWN"?"down":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
+      (tgt.weight === "" ? '<div class="tg-big">Bodyweight</div>'
+        : '<div class="tg-big">TOTAL: <b>'+tgt.weight+'</b> '+U+'</div>' +
+          (pair ? '<div class="tg-hand">= <b>'+perHand(tgt.weight)+' '+U+'</b> in each hand</div>' : '')) +
+      '<div class="tg-sr">' +
+        (tgt.sets ? '<b>'+esc(String(tgt.sets))+'</b> sets' : '') +
+        (tgt.sets && tgt.reps ? ' &nbsp;of&nbsp; ' : '') +
+        (tgt.reps ? '<b>'+esc(String(tgt.reps))+'</b> reps' : '') +
       '</div>' +
       (tgt.change ? '<div class="tg-change">'+esc(tgt.change)+'</div>' : '') +
       (tgt.why ? '<div class="tg-why">'+esc(tgt.why)+'</div>' : '') +
@@ -1849,7 +1882,9 @@ function exCard(e, dayName) {
       '<div class="ex-info">' +
         '<div class="ex-name">'+esc(e.n)+' <span class="ex-tick">\u2713</span></div>' +
         '<div class="done-line">' +
-          (wDisp ? '<b>'+wDisp+'</b> '+U+' total' : '<b>bodyweight</b>') +
+          (wDisp ? 'TOTAL <b>'+wDisp+'</b> '+U +
+            (isPairLift(e) && perHandOf(wDisp) ? ' <span class="dl-hand">('+perHandOf(wDisp)+' each hand)</span>' : '')
+            : '<b>bodyweight</b>') +
           (todaySet.sets ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.sets)+'</b> sets' : '') +
           (todaySet.reps ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.reps)+'</b> reps' : '') +
         '</div>' +
@@ -2266,15 +2301,16 @@ async function refreshTargets(silent) {
     const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
 
     /* Only accept targets whose names match real exercises in the plan. */
+    const COACH_EX_BY_NAME = {};
     const valid = new Set();
-    getPlan().forEach(day => day.ex.forEach(e => valid.add(e.n)));
+    getPlan().forEach(day => day.ex.forEach(e => { valid.add(e.n); COACH_EX_BY_NAME[e.n] = e; }));
     const t = getTargets();
     let n = 0;
     (parsed.targets || []).forEach(x => {
       if (!x || !valid.has(x.name)) return;
       let wNum = parseFloat(x.weight);
       if (isNaN(wNum) || wNum <= 0) return;
-      wNum = snapWeight(wNum); // never trust it to round properly
+      wNum = snapWeight(wNum, COACH_EX_BY_NAME[x.name]); // never trust it to round properly
       t[x.name] = { weight: wNum, unit: U, reps: x.reps || "", sets: x.sets || "", why: x.why || "", setAt: todayISO() };
       n++;
     });
@@ -2413,37 +2449,37 @@ function exSvg(kind) {
    waist trim (via deficit), keep his incline-walk cardio. */
 const DEFAULT_PLAN = [
   { name: "Day 1 — Chest & Triceps", burn: 300, meta: "~50 min + incline walk", ex: [
-    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0 mph", c:["Your usual walk, shortened — just to warm up, not to tire out."], p:"" },
-    { fig:"bench", n:"Dumbbell bench press", load:"total", s:"4 × 8–10", c:["Lower to chest with control, press up hard.","Pick a weight where the last 2 reps are a genuine fight."], p:"Add 1–2 kg once you hit 4×10 clean." },
-    { fig:"press", n:"Incline dumbbell press", load:"total", s:"3 × 8–10", c:["Bench at ~30°. Builds the upper chest that shapes the shelf look."], p:"Progress same as bench." },
-    { fig:"fly", n:"Chest fly (your squeeze machine)", load:"total", s:"3 × 12", c:["Now it's a finisher, not the main event.","Squeeze 1 sec at the middle."], p:"Last exercise — chase the burn, not the load." },
-    { fig:"pushdown", n:"Triceps rope pushdown", load:"total", s:"3 × 10–12", c:["Elbows pinned to your sides.","Split the rope apart at the bottom."], p:"Add weight when 3×12 feels smooth." },
-    { fig:"press", n:"Overhead triceps extension", load:"total", s:"3 × 10–12", c:["Hits the long head — the bulk of tricep size.","Full stretch behind the head."], p:"Slow negatives beat heavy sloppy reps." },
+    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0 mph", c:["Set incline 12%, speed 3.0.","Warm-up only — don't tire yourself out."], p:"" },
+    { fig:"bench", n:"Dumbbell bench press", load:"total", pair:1, s:"4 × 8–10", c:["Lie flat, one dumbbell in each hand.","Lower to chest slowly, press up hard.","Last 2 reps should be a real fight."], p:"" },
+    { fig:"press", n:"Incline dumbbell press", load:"total", pair:1, s:"3 × 8–10", c:["Set the bench to about 30 degrees.","One dumbbell in each hand, press up and slightly in."], p:"" },
+    { fig:"fly", n:"Chest fly (squeeze machine)", load:"total", s:"3 × 12", c:["Machine weight — read the stack.","Squeeze and hold 1 second in the middle."], p:"" },
+    { fig:"pushdown", n:"Triceps rope pushdown", load:"total", s:"3 × 10–12", c:["Cable stack weight.","Elbows pinned to your sides, don't let them drift.","Split the rope apart at the bottom."], p:"" },
+    { fig:"press", n:"Overhead triceps extension", load:"total", s:"3 × 10–12", c:["One dumbbell held with both hands, or a rope overhead.","Lower behind your head for a full stretch.","Slow on the way down."], p:"" },
   ]},
   { name: "Day 2 — Back & Biceps", burn: 310, meta: "~55 min · core finisher", ex: [
     { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
-    { fig:"pulldown", n:"Lat pulldown", load:"total", s:"4 × 8–10", c:["Pull to upper chest, elbows down and back.","A wide back makes the waist look smaller — free proportion points."], p:"Add a plate when 4×10 is clean." },
-    { fig:"row", n:"Seated cable row", load:"total", s:"3 × 10", c:["Chest tall, squeeze shoulder blades together."], p:"" },
-    { fig:"curl", n:"Dumbbell curls", load:"total", s:"3 × 8–10", c:["THE bicep builder — go heavier than feels polite.","No swinging; brace your core."], p:"This is where arm size comes from: +1 kg or +1 rep every week or two." },
-    { fig:"curl", n:"Hammer curls", load:"total", s:"3 × 10–12", c:["Palms facing in — thickens the arm from the side view."], p:"" },
-    { fig:"row", n:"Face pulls", load:"total", s:"3 × 15", c:["Pull rope to your face, elbows high.","Posture + rear delts — makes everything look better."], p:"Light weight, strict form." },
+    { fig:"pulldown", n:"Lat pulldown", load:"total", s:"4 × 8–10", c:["Machine stack weight.","Pull the bar to your upper chest, elbows down and back.","Don't lean back to muscle it down."], p:"" },
+    { fig:"row", n:"Seated cable row", load:"total", s:"3 × 10", c:["Cable stack weight.","Chest tall, squeeze your shoulder blades together."], p:"" },
+    { fig:"curl", n:"Dumbbell curls", load:"total", pair:1, s:"3 × 8–10", c:["One dumbbell in each hand, palms facing up.","No swinging — keep your elbows still."], p:"" },
+    { fig:"curl", n:"Hammer curls", load:"total", pair:1, s:"3 × 10–12", c:["One dumbbell in each hand, palms facing IN (thumbs up).","Elbows stay tucked."], p:"" },
+    { fig:"row", n:"Face pulls", load:"total", s:"3 × 15", c:["Cable stack weight, rope at head height.","Pull the rope to your face, elbows high.","Light weight, strict form."], p:"" },
     { fig:"plank", n:"Dead bug", load:"body", s:"3 × 8 each side", c:["On your back, opposite arm and leg reach away slowly.","Lower back stays pressed to the floor the whole time."], p:"Slow it down before adding reps — 4 seconds out, 4 back." },
     { fig:"plank", n:"Pallof press", load:"total", s:"3 × 10 each side", c:["Stand side-on to a cable, press the handle straight out from your chest.","Resist the twist — that is the whole exercise."], p:"Add weight when you stop wobbling at 3×10." },
   ]},
   { name: "Day 3 — Legs & Core", burn: 320, meta: "~45 min + optional run", ex: [
     { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
-    { fig:"squat", n:"Goblet squat", load:"total", s:"4 × 10", c:["Hold a dumbbell at your chest, sit between your heels.","Legs are half your body — training them burns serious calories."], p:"Move to barbell squats when the heaviest dumbbell feels easy." },
-    { fig:"squat", n:"Romanian deadlift", load:"total", s:"3 × 10", c:["Hinge at hips, soft knees, feel the hamstring stretch."], p:"" },
-    { fig:"plank", n:"Plank", load:"body", s:"3 × 45–60 sec", c:["Squeeze glutes, don't let hips sag.","Builds the muscle the deficit will eventually reveal."], p:"Add 10 sec when 60 feels routine." },
-    { fig:"plank", n:"Side plank", load:"body", s:"2 × 30 sec each side", c:["Directly works the oblique area under the muffin top.","Remember: reveals come from the deficit, strength comes from this."], p:"" },
-    { fig:"run", n:"Flat run finisher", load:"body", s:"5–10 min easy", c:["Your occasional flat run, formalized. Skip if legs are cooked."], p:"" },
+    { fig:"squat", n:"Goblet squat", load:"total", s:"4 × 10", c:["ONE dumbbell held at your chest with both hands.","Sit straight down between your heels.","Chest up the whole way."], p:"" },
+    { fig:"squat", n:"Romanian deadlift", load:"total", pair:1, s:"3 × 10", c:["One dumbbell in each hand, or a barbell.","Push your hips back, knees soft.","Stop when you feel the hamstring stretch."], p:"" },
+    { fig:"plank", n:"Plank", load:"body", s:"3 × 45–60 sec", c:["Forearms and toes on the floor.","Squeeze your glutes, don't let your hips sag."], p:"" },
+    { fig:"plank", n:"Side plank", load:"body", s:"2 × 30 sec each side", c:["On one forearm, body in a straight line.","Hips lifted, don't let them drop."], p:"" },
+    { fig:"run", n:"Flat run finisher", load:"body", s:"5–10 min easy", c:["Flat, easy pace.","Skip it if your legs are already cooked."], p:"" },
   ]},
   { name: "Day 4 — Shoulders & Arms", burn: 295, meta: "~50 min · core finisher + walk", ex: [
-    { fig:"press", n:"Dumbbell shoulder press", load:"total", s:"4 × 8–10", c:["Capped shoulders are most of the 'ripped and proportional' look."], p:"Add weight at 4×10." },
-    { fig:"fly", n:"Lateral raises", load:"total", s:"3 × 12–15", c:["Light weight, arms to shoulder height, slight lean forward.","Width here narrows the waist visually."], p:"Reps before weight on these." },
-    { fig:"curl", n:"EZ-bar or dumbbell curls", load:"total", s:"3 × 8–10", c:["Second weekly bicep hit — frequency is what your arms were missing."], p:"Track the weight. Beat it slowly." },
-    { fig:"pushdown", n:"Close-grip press or bench dips", load:"total", s:"3 × 8–10", c:["Second weekly tricep hit — triceps are ⅔ of arm size."], p:"" },
-    { fig:"plank", n:"Hanging knee raise", load:"body", s:"3 × 10–12", c:["Hang from the bar, knees up to chest, no swinging.","Lower slowly — the way down does the work."], p:"When 3×12 is clean, straighten the legs a little." },
+    { fig:"press", n:"Dumbbell shoulder press", load:"total", pair:1, s:"4 × 8–10", c:["One dumbbell in each hand, at shoulder height.","Press straight overhead, don't arch your back."], p:"" },
+    { fig:"fly", n:"Lateral raises", load:"total", pair:1, s:"3 × 12–15", c:["One dumbbell in each hand, arms out to the side.","Stop at shoulder height, no higher.","Light weight — these are not meant to be heavy."], p:"" },
+    { fig:"curl", n:"EZ-bar curls", load:"total", s:"3 × 8–10", c:["EZ-bar: count the bar plus the plates.","Elbows tucked, no swinging."], p:"" },
+    { fig:"pushdown", n:"Close-grip bench press", load:"total", s:"3 × 8–10", c:["Barbell: count the bar plus the plates.","Hands shoulder-width, elbows close to your body."], p:"" },
+    { fig:"plank", n:"Hanging knee raise", load:"body", s:"3 × 10–12", c:["Hang from the bar, knees up to your chest.","No swinging. Lower slowly."], p:"" },
     { fig:"plank", n:"Long-lever plank", load:"body", s:"3 × 30–40 sec", c:["Plank with elbows further forward than normal — much harder.","Ribs down, glutes tight, no sagging."], p:"Add 5 sec when 40 feels steady, or walk the elbows further out." },
     { fig:"treadmill", n:"Incline walk finisher", load:"body", s:"20–25 min · 12% · 3.0", c:["Your favourite, at full length — great low-impact burn for the AZ heat months."], p:"" },
   ]},
