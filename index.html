@@ -344,6 +344,36 @@
   .tg-sr { font-family:var(--mono); font-size:15px; color:var(--ink-dim); margin-top:2px; }
   .tg-sr b { font-size:20px; color:var(--ink); }
   .dl-hand { font-size:13px; color:#0A6C78; }
+  .entry-day {
+    font-family:var(--mono); font-size:11.5px; padding:6px 12px; border-radius:999px;
+    margin-bottom:7px; display:inline-block; background:var(--panel);
+    border:1px solid var(--line); color:var(--ink-dim);
+  }
+  .entry-day b { color:var(--ink); }
+  .entry-day.locked { border-color:var(--amber); color:#8A6410; background:rgba(245,195,63,.18); font-weight:700; }
+  .entry-day.off { border-color:var(--amber); }
+  .ed-warn { color:#8A6410; font-weight:700; }
+  .rest-bar {
+    position:fixed; left:0; right:0; bottom:0; z-index:20; display:none;
+    align-items:center; gap:10px; padding:12px 14px calc(12px + env(safe-area-inset-bottom));
+    background:var(--blue); color:#fff; box-shadow:0 -3px 14px rgba(18,58,90,.25);
+  }
+  .rest-bar.done { background:#0A6C78; }
+  .rb-left { flex:1; min-width:0; }
+  .rb-l { font-family:var(--mono); font-size:10px; letter-spacing:.12em; opacity:.85; }
+  .rb-n { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .rb-time { font-family:var(--mono); font-size:30px; font-weight:700; letter-spacing:-.02em; }
+  .rb-btn {
+    background:rgba(255,255,255,.18); border:1px solid rgba(255,255,255,.5); color:#fff;
+    border-radius:999px; padding:9px 13px; font-size:12.5px; font-weight:700; cursor:pointer;
+    font-family:var(--sans); min-height:42px;
+  }
+  .co-btn.sm.rest { background:var(--panel); color:var(--blue); border-color:var(--blue); }
+  .tg-burn {
+    font-size:13px; color:#8A6410; background:rgba(245,195,63,.20);
+    border-radius:8px; padding:7px 10px; margin-top:7px; line-height:1.45;
+  }
+  .tg-burn b { color:var(--ink); }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -441,7 +471,7 @@
   <div class="tabs">
     <button class="tab active" data-tab="log">Log</button>
     <button class="tab" data-tab="trends">Trends</button>
-    <button class="tab" data-tab="coach">Coach</button>
+    <button class="tab" data-tab="coach">Coach Claude</button>
     <button class="tab" data-tab="chat">Chat</button>
     <button class="tab" data-tab="notes">Notes</button>
     <button class="tab" data-tab="data">Data</button>
@@ -458,7 +488,7 @@
   <div class="inner">
     <div id="coach-reply" class="coach-reply" style="display:none"></div>
     <div class="row">
-      <input id="coach-q" placeholder="Ask your coach, or say what to change…" autocomplete="off">
+      <input id="coach-q" placeholder="Ask Coach Claude, or say what to change…" autocomplete="off">
       <button id="coach-send" onclick="sendCoachChat()">Ask</button>
     </div>
   </div>
@@ -476,8 +506,9 @@
       <div class="loadbar-track"><div class="loadbar-fill" id="loadbar-fill"></div></div>
       <div class="loadbar-label" id="loadbar-label">Thinking…</div>
     </div>
+    <div class="entry-day locked" id="entry-day">Pick a day above first</div>
     <div class="row">
-      <input id="chat-input" placeholder="What did you eat?" autocomplete="off">
+      <input id="chat-input" placeholder="Tap a day above to start logging" autocomplete="off" disabled>
       <button id="chat-send">Log</button>
     </div>
   </div>
@@ -486,7 +517,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v38";
+const APP_VERSION = "v39";
 
 
 const DEFAULT_GOAL = 1900;
@@ -887,7 +918,10 @@ function mergeIntoLocal(remote) {
   }
 
   diary = loadDiary();
-  selected = pickDefaultDate();
+  /* Keep the day you're looking at. This used to snap back to today on every
+     background sync, which is why moving items between days appeared to need
+     a manual refresh. */
+  if (!selected || !diary[selected]) selected = pickDefaultDate();
   PLAN_CACHE = null; // a plan change from the other device must take effect
   return { days: Object.keys(mergedDiary).length };
 }
@@ -1008,6 +1042,36 @@ async function syncNow(silent) {
 }
 
 /* Debounced auto-push whenever data changes. */
+/* You must pick a day before logging, so nothing lands on the wrong date by
+   accident. Resets each time the app opens. */
+let dayConfirmed = false;
+function confirmDay(d) {
+  selected = d;
+  dayConfirmed = true;
+  updateEntryLock();
+}
+function updateEntryLock() {
+  const inp = document.getElementById("chat-input");
+  const btn = document.getElementById("chat-send");
+  const tag = document.getElementById("entry-day");
+  if (!inp || !btn) return;
+  inp.disabled = !dayConfirmed;
+  btn.disabled = !dayConfirmed;
+  inp.placeholder = dayConfirmed ? "What did you eat?" : "Tap a day above to start logging";
+  if (tag) {
+    if (dayConfirmed) {
+      const isToday = selected === todayISO();
+      tag.innerHTML = 'Logging to <b>' + fmtDay(selected) + '</b>' +
+        (isToday ? '' : ' <span class="ed-warn">\u2014 not today</span>');
+      tag.className = "entry-day" + (isToday ? "" : " off");
+    } else {
+      tag.textContent = "Pick a day above first";
+      tag.className = "entry-day locked";
+    }
+    tag.style.display = "block";
+  }
+}
+
 let pushTimer = null;
 function queuePush() {
   if (!ghToken()) return;
@@ -1306,6 +1370,18 @@ function startingTarget(ex) {
   };
 }
 
+/* Strength fades with time off. These are conservative re-entry cuts so the
+   first session back isn't a failed set or a strain. */
+function layoffAdjust(ex, lastDate) {
+  const gap = daysBetween(lastDate, todayISO());
+  if (gap <= 10) return null;
+  let pct, note;
+  if (gap <= 20)      { pct = 0.90; note = gap + " days off \u2014 start 10% lighter and build back."; }
+  else if (gap <= 35) { pct = 0.80; note = gap + " days off \u2014 start 20% lighter, form first."; }
+  else                { pct = 0.70; note = Math.round(gap/7) + " weeks off \u2014 start 30% lighter and treat this as week one again."; }
+  return { pct, note, gap };
+}
+
 function localTarget(ex) {
   const last = lastSet(ex.n);
   if (!last || !last.weight) return startingTarget(ex);
@@ -1316,6 +1392,21 @@ function localTarget(ex) {
   const U = getUnits();
   const stall = stallLength(ex);
   const lastLine = shown + " " + U + (isNaN(lastReps) ? "" : " × " + lastReps + " reps");
+
+  /* A long layoff overrides everything else — come back lighter. */
+  const lay = layoffAdjust(ex, last.date);
+  if (lay) {
+    const back = snapWeight(shown * lay.pct, ex);
+    return {
+      weight: back,
+      reps: (cap ? String(Math.max(cap - 2, 6)) : last.reps),
+      sets: last.sets || "",
+      verdict: "EASE BACK",
+      why: lay.note + " You'll be back to " + shown + " " + U + " within a couple of sessions.",
+      change: lastLine + "  ↓  " + back + " " + U,
+      src: "local",
+    };
+  }
 
   /* Earned the increase. */
   if (cap && !isNaN(lastReps) && lastReps >= cap) {
@@ -1500,6 +1591,7 @@ function esc(s) { const div=document.createElement("div"); div.textContent=s; re
 /* ============================ rendering ============================ */
 function render() {
   renderRail();
+  updateEntryLock();
   if (currentTab === "log") renderLog();
   if (currentTab === "trends") renderTrends();
   if (currentTab === "coach") renderCoach();
@@ -1810,6 +1902,93 @@ function perHandOf(v) {
   return (half % 5 === 0) ? half : Math.round(half * 10) / 10;
 }
 
+/* Rest is prescribed, not guessed: heavy compounds need real recovery,
+   isolation and core need much less. */
+/* One extra set at a lighter weight, taken close to failure, after the main
+   work. Adds volume where it counts without needing heavier loads — which is
+   exactly what's available when you're eating in a deficit. */
+function backoffSet(ex, targetWeight) {
+  if (isCardio(ex) || ex.load === "body") return null;
+  const w = parseFloat(targetWeight);
+  if (isNaN(w) || w <= 0) return null;
+  /* Only on the exercises where it's worth the fatigue. */
+  if (!/bench|press|curl|pulldown|row|pushdown|fly|raise|extension|squat/i.test(ex.n)) return null;
+  const light = snapWeight(w * 0.6, ex);
+  if (light >= w) return null;
+  return { weight: light, perHand: isPairLift(ex) ? perHandOf(light) : null };
+}
+
+function restSeconds(ex) {
+  if (ex.rest) return ex.rest;
+  if (isCardio(ex)) return 0;
+  if (ex.load === "body") return 45;
+  if (/bench|press|squat|deadlift|pulldown|row|dip/i.test(ex.n)) return 150;
+  if (/curl|raise|pushdown|extension|fly|face pull|pallof/i.test(ex.n)) return 75;
+  return 90;
+}
+function fmtClock(sec) {
+  const m = Math.floor(Math.abs(sec) / 60), s2 = Math.abs(sec) % 60;
+  return (sec < 0 ? "+" : "") + m + ":" + String(s2).padStart(2, "0");
+}
+
+let restTimer = null, restLeft = 0, restName = "";
+function startRest(exName) {
+  const ex = getPlan().flatMap(d => d.ex).find(x => x.n === exName);
+  if (!ex) return;
+  restName = exName;
+  restLeft = restSeconds(ex);
+  showRestBar();
+  clearInterval(restTimer);
+  restTimer = setInterval(() => {
+    restLeft--;
+    showRestBar();
+    if (restLeft === 0) {
+      try { if (navigator.vibrate) navigator.vibrate([200,100,200]); } catch(e) {}
+      beep();
+    }
+    if (restLeft <= -60) stopRest();
+  }, 1000);
+}
+function stopRest() {
+  clearInterval(restTimer);
+  restTimer = null;
+  const b = document.getElementById("rest-bar");
+  if (b) b.style.display = "none";
+}
+function addRest(n) { restLeft += n; showRestBar(); }
+function showRestBar() {
+  let b = document.getElementById("rest-bar");
+  if (!b) {
+    b = document.createElement("div");
+    b.id = "rest-bar";
+    b.className = "rest-bar";
+    document.body.appendChild(b);
+  }
+  const done = restLeft <= 0;
+  b.className = "rest-bar" + (done ? " done" : "");
+  b.innerHTML =
+    '<div class="rb-left"><div class="rb-l">' + (done ? "REST OVER \u2014 GO" : "RESTING") + '</div>' +
+    '<div class="rb-n">' + esc(restName) + '</div></div>' +
+    '<div class="rb-time">' + fmtClock(restLeft) + '</div>' +
+    '<button class="rb-btn" onclick="addRest(30)">+30s</button>' +
+    '<button class="rb-btn" onclick="stopRest()">Done</button>';
+  b.style.display = "flex";
+}
+/* A short tone so you can look away from the phone. */
+function beep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = 880; o.type = "sine";
+    g.gain.setValueAtTime(0.25, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+    o.start(); o.stop(ctx.currentTime + 0.6);
+  } catch(e) {}
+}
+
 function exCard(e, dayName) {
   const id = cssId(e.n);
   const last = lastSet(e.n);
@@ -1847,6 +2026,11 @@ function exCard(e, dayName) {
         (tgt.reps ? '<b>'+esc(String(tgt.reps))+'</b> reps' : '') +
       '</div>' +
       (tgt.change ? '<div class="tg-change">'+esc(tgt.change)+'</div>' : '') +
+      (function(){
+        const bo = backoffSet(e, tgt.weight);
+        return bo ? '<div class="tg-burn">Then <b>1 burnout set</b> at <b>'+bo.weight+' '+U+'</b>' +
+          (bo.perHand ? ' ('+bo.perHand+' each hand)' : '') + ' \u2014 as many reps as you can.</div>' : '';
+      })() +
       (tgt.why ? '<div class="tg-why">'+esc(tgt.why)+'</div>' : '') +
       (tgt.alts ? '<div class="tg-alts">Swap ideas: '+tgt.alts.map(a=>esc(a)).join(" · ")+'</div>' : '') +
       '</div>'
@@ -1935,7 +2119,8 @@ function exCard(e, dayName) {
         '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
         (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' :
                   '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>') +
-        '<button class="co-btn sm ghost" data-ex-swap="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'" title="Ask the coach to replace this">Swap</button>' +
+        '<button class="co-btn sm ghost" data-ex-swap="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'" title="Ask Coach Claude to replace this">Swap</button>' +
+        (restSeconds(e) ? '<button class="co-btn sm rest" data-ex-rest="'+esc(e.n)+'">\u23f1 Rest '+Math.round(restSeconds(e)/60*10)/10+'m</button>' : '') +
       '</div>' +
     '</div></div>';
 }
@@ -1951,6 +2136,8 @@ document.addEventListener("click", function(e) {
   if (u) { undoLast(u.dataset.exUndo); return; }
   const sw = e.target.closest("[data-ex-swap]");
   if (sw) { requestSwap(sw.dataset.exSwap, sw.dataset.exDay); return; }
+  const rs = e.target.closest("[data-ex-rest]");
+  if (rs) { startRest(rs.dataset.exRest); return; }
 });
 
 /* Ask the coach to replace one exercise, in one tap. */
@@ -1970,6 +2157,7 @@ let pendingCoachMsg = null;
    With a 4-day rotation trained ~4x/week, each day comes round roughly every
    4 days. Work out when each was last done and when it's next due. */
 const ROTATION_DAYS = 4;
+const ROTATION_GRACE = 3; // life happens — no nagging for a few days
 
 function dayLastDone(dayName) {
   const w = getWorkouts();
@@ -1993,8 +2181,13 @@ function dayScheduleInfo(dayName) {
   const diff = daysBetween(todayISO(), due);
   const ago = daysBetween(last, todayISO());
   const agoText = ago === 0 ? "today" : ago === 1 ? "yesterday" : ago + " days ago";
-  if (diff < 0) return { text: "Last done " + agoText, state: "over", badge: "OVERDUE " + Math.abs(diff) + "D" };
   if (diff === 0) return { text: "Last done " + agoText, state: "due", badge: "DUE TODAY" };
+  if (diff < 0) {
+    const late = Math.abs(diff);
+    /* A few days' slack before it starts nagging. */
+    if (late <= ROTATION_GRACE) return { text: "Last done " + agoText, state: "due", badge: "READY" };
+    return { text: "Last done " + agoText, state: "over", badge: late + "D OVERDUE" };
+  }
   return { text: "Last done " + agoText, state: "rest", badge: "NEXT IN " + diff + "D" };
 }
 /* Which day should he train next? The one longest since it was done. */
@@ -2197,7 +2390,7 @@ function setCoachBubble(show) {
     b.id = "coach-bubble";
     b.className = "coach-bubble";
     b.innerHTML = "\ud83d\udcac";
-    b.title = "Show your coach's last reply";
+    b.title = "Show Coach Claude’s last reply";
     b.onclick = expandCoachReply;
     document.body.appendChild(b);
   }
@@ -2792,7 +2985,7 @@ async function askCoach() {
     /* Immediately push concrete numbers onto the workout cards. */
     await refreshTargets(true);
   } catch(e) {
-    showToast(null, {ok:false, text:"Coach error: " + e.message});
+    showToast(null, {ok:false, text:"Coach Claude error: " + e.message});
     if (btn) { btn.disabled = false; btn.textContent = "Generate personalized plan"; }
   }
 }
@@ -2929,7 +3122,7 @@ function renderRail() {
       '<div class="k">'+total.toLocaleString()+'</div>' +
       (burn ? '<div class="burn-tag">−'+burn.toLocaleString()+'</div>' : '') +
       '<div class="bar"><div style="width:'+pct+'%;background:var(--'+(over?"red":"green")+')"></div></div>';
-    btn.onclick = () => { selected = d; if (currentTab!=="log") switchTab("log"); render(); };
+    btn.onclick = () => { confirmDay(d); if (currentTab!=="log") switchTab("log"); render(); };
     if (d === selected) btn.dataset.active = "1";
     rail.appendChild(btn);
   });
@@ -2960,7 +3153,7 @@ function addFutureDay() {
   const furthest = dates[dates.length-1];
   candidate = (furthest >= todayISO()) ? shiftDate(furthest, 1) : shiftDate(todayISO(), 1);
   ensureDay(candidate);
-  selected = candidate;
+  confirmDay(candidate);
   try { saveDiary(); } catch(e) {}
   if (currentTab !== "log") switchTab("log"); else render();
   showToast(null, {ok:true, text:"Added "+fmtDay(candidate)+" — logging here now."});
