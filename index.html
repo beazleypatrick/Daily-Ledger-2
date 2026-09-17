@@ -374,6 +374,43 @@
     border-radius:8px; padding:7px 10px; margin-top:7px; line-height:1.45;
   }
   .tg-burn b { color:var(--ink); }
+  .lib { margin-top:8px; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }
+  .lib-cat {
+    font-family:var(--mono); font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--blue); margin:10px 0 6px; font-weight:700;
+  }
+  .lib-cat:first-child { margin-top:0; }
+  .lib-item.pinned { border-color:var(--cyan); }
+  .lib-foot { font-size:11.5px; color:var(--ink-dim); margin-top:12px; line-height:1.5; }
+  .qa.lib-btn { border-color:var(--blue); color:var(--blue); font-weight:700; }
+  .qa .qa-edit { color:var(--ink-dim); font-size:12px; padding-left:2px; }
+  .sess-bar {
+    position:fixed; left:0; right:0; top:0; z-index:19; display:none;
+    align-items:center; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-top));
+    background:var(--blue); color:#fff; box-shadow:0 3px 14px rgba(18,58,90,.25);
+  }
+  .sess-bar.behind { background:#8A6410; }
+  .sess-bar.over { background:#A33B2E; }
+  .sess-bar.ahead { background:#0A6C78; }
+  .sb-left { flex:1; min-width:0; }
+  .sb-l { font-family:var(--mono); font-size:10px; letter-spacing:.12em; opacity:.9; }
+  .sb-n { font-size:12.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .sb-time { font-family:var(--mono); font-size:26px; font-weight:700; }
+  .hw-row { display:flex; justify-content:space-between; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .hw-row:last-of-type { border-bottom:none; }
+  .hw-s { font-family:var(--mono); font-size:12px; color:var(--ink-dim); white-space:nowrap; }
+  .cond-row { display:flex; align-items:center; gap:8px; padding:10px 0; border-bottom:1px solid var(--blue-dim); flex-wrap:wrap; }
+  .cond-row:last-child { border-bottom:none; }
+  .cond-n { flex:1 1 150px; font-size:14px; font-weight:700; }
+  .cond-k { font-family:var(--mono); font-size:11px; color:#0A6C78; font-weight:400; }
+  .cond-d { font-size:12px; color:var(--ink-dim); font-weight:400; margin-top:2px; line-height:1.4; }
+  .cond-sel {
+    background:var(--panel); border:1px solid var(--blue-dim); border-radius:8px;
+    color:var(--ink); font-family:var(--sans); font-size:12.5px; padding:9px 8px; min-height:42px;
+  }
+  .done-burn { font-family:var(--mono); font-size:12.5px; color:#8A6410; margin-top:3px; }
+  .lf.burn label { color:#8A6410; }
+  .over-time { color:#8A6410; font-weight:700; }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -517,7 +554,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v39";
+const APP_VERSION = "v41";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1382,7 +1419,51 @@ function layoffAdjust(ex, lastDate) {
   return { pct, note, gap };
 }
 
+/* Time-based work progresses in time, not weight. Cardio creeps up a minute
+   at a time; holds add 5 seconds. Both cap out so sessions stay ~45-60 min. */
+function timeTarget(ex) {
+  const hist = exHistory(ex.n);
+  const last = hist.length ? hist[hist.length-1] : null;
+  const cardio = isCardio(ex);
+  const step = cardio ? 1 : 5;                 // minutes vs seconds
+  const unit = cardio ? "min" : "sec";
+  const cap = cardio ? (/warm-?up/i.test(ex.n) ? 12 : 35) : 90;
+
+  const prescribed = (ex.s.match(/(\d+)\s*[\u2013-]\s*(\d+)/) || [])[2]
+                  || (ex.s.match(/(\d+)/) || [])[1] || (cardio ? "20" : "45");
+  const lastVal = last ? parseFloat(cardio ? last.mins : (last.reps || last.mins)) : NaN;
+
+  if (isNaN(lastVal) || lastVal <= 0) {
+    return { weight: "", mins: prescribed, reps: cardio ? "" : prescribed, sets: "",
+             verdict: "START HERE", timeTarget: prescribed + " " + unit,
+             why: "Start here and we will build from what you actually do.",
+             change: null, src: "start" };
+  }
+  const lay = last ? layoffAdjust(ex, last.date) : null;
+  if (lay) {
+    const back = Math.max(step, Math.round(lastVal * lay.pct));
+    return { weight: "", mins: String(back), reps: cardio ? "" : String(back), sets: "",
+             verdict: "EASE BACK", timeTarget: back + " " + unit,
+             why: lay.note, change: lastVal + " " + unit + "  \u2193  " + back + " " + unit, src: "local" };
+  }
+  if (lastVal >= cap) {
+    return { weight: "", mins: String(cap), reps: cardio ? "" : String(cap), sets: "",
+             verdict: "HOLD", timeTarget: cap + " " + unit,
+             why: "You have hit the ceiling for this one. Keep it here and push the intensity instead.",
+             change: null, src: "local" };
+  }
+  const next = Math.min(lastVal + step, cap);
+  return {
+    weight: "", mins: String(next), reps: cardio ? "" : String(next), sets: "",
+    verdict: "GO LONGER", timeTarget: next + " " + unit,
+    why: "Add " + step + " " + unit + " on last time. Small steps add up.",
+    change: lastVal + " " + unit + "  \u2192  " + next + " " + unit,
+    src: "local",
+  };
+}
+
 function localTarget(ex) {
+  if (isCardio(ex) || ex.load === "body") return timeTarget(ex);
   const last = lastSet(ex.n);
   if (!last || !last.weight) return startingTarget(ex);
   const cap = topReps(ex.s);
@@ -1628,16 +1709,123 @@ function frequentItems(limit) {
 let _qaPins = [];
 let _qaFreq = [];
 
+/* A starter library so Quick Adds are useful from day one, weighted towards
+   the things actually logged in this diary. All values are estimates — tap
+   Edit on a pinned item to correct one. */
+const FOOD_LIBRARY = {
+  "Breakfast": [
+    { name: "Scrambled eggs \u00d7 2", kcal: 180 },
+    { name: "Protein smoothie", kcal: 320 },
+    { name: "Porridge with milk", kcal: 250 },
+    { name: "Greek yoghurt, plain (170g)", kcal: 100 },
+    { name: "Banana", kcal: 105 },
+    { name: "Toast with butter \u00d7 2", kcal: 220 },
+    { name: "Breakfast burrito (medium)", kcal: 600 },
+    { name: "Blueberry scone (large)", kcal: 480 },
+  ],
+  "Mains": [
+    { name: "Chicken breast, grilled (6 oz)", kcal: 280 },
+    { name: "Salmon fillet with sauce", kcal: 350 },
+    { name: "White rice, \u00bd cup cooked", kcal: 100 },
+    { name: "Brown rice, 1 cup cooked", kcal: 215 },
+    { name: "Chopped salad kit, \u2153 bag", kcal: 120 },
+    { name: "Burrito bowl (chicken)", kcal: 700 },
+    { name: "Turkey sandwich", kcal: 450 },
+    { name: "Pasta with sauce (1 plate)", kcal: 550 },
+    { name: "Pizza slice (thick)", kcal: 350 },
+    { name: "In-N-Out Double-Double", kcal: 670 },
+    { name: "In-N-Out fries", kcal: 395 },
+  ],
+  "Snacks": [
+    { name: "Shapes / savoury crackers (serve)", kcal: 150 },
+    { name: "Granola bites", kcal: 100 },
+    { name: "Protein bar", kcal: 210 },
+    { name: "Almonds, small handful", kcal: 165 },
+    { name: "Apple", kcal: 95 },
+    { name: "Cherries \u00d7 10", kcal: 45 },
+    { name: "Crisps, small bag", kcal: 160 },
+    { name: "Dark chocolate, 2 squares", kcal: 110 },
+  ],
+  "Drinks": [
+    { name: "Black coffee", kcal: 5 },
+    { name: "Latte (12 oz)", kcal: 150 },
+    { name: "Diet Coke", kcal: 0 },
+    { name: "Orange juice (8 oz)", kcal: 110 },
+    { name: "Protein shake (water)", kcal: 130 },
+    { name: "Sports drink", kcal: 80 },
+  ],
+  "Alcohol": [
+    { name: "Beer (12 oz)", kcal: 155 },
+    { name: "Light beer", kcal: 103 },
+    { name: "Mexican lager (16 oz)", kcal: 190 },
+    { name: "Glass of wine (6 oz)", kcal: 150 },
+    { name: "Spirit + mixer", kcal: 175 },
+  ],
+};
+
+let libOpen = false;
+function toggleLibrary() {
+  libOpen = !libOpen;
+  render();
+}
+/* Log straight from the library. */
+function libAdd(cat, i) {
+  const item = FOOD_LIBRARY[cat] && FOOD_LIBRARY[cat][i];
+  if (item) addQuickMeal(item);
+}
+function libPin(cat, i) {
+  const item = FOOD_LIBRARY[cat] && FOOD_LIBRARY[cat][i];
+  if (item) pinItemObj(item);
+}
+/* Build your own, for the things only you eat. */
+function addCustomQuick() {
+  const name = prompt("What do you want a button for?\n(e.g. \u201cMy usual smoothie\u201d)");
+  if (!name || !name.trim()) return;
+  const kcalStr = prompt('How many calories in "' + name.trim() + '"?');
+  const kcal = parseInt(kcalStr, 10);
+  if (isNaN(kcal) || kcal < 0) { showToast(null, {ok:false, text:"Need a number for the calories."}); return; }
+  pinItemObj({ name: name.trim(), kcal: kcal });
+}
+function editPin(i) {
+  const pins = getPins();
+  const p = pins[i];
+  if (!p) return;
+  const kcalStr = prompt('Calories for "' + p.name + '"?', String(p.kcal));
+  const kcal = parseInt(kcalStr, 10);
+  if (isNaN(kcal) || kcal < 0) return;
+  pins[i] = Object.assign({}, p, { kcal: kcal });
+  savePins(pins);
+  render();
+  showToast(null, {ok:true, text:'"' + p.name + '" set to ' + kcal + " kcal."});
+}
+
+function libraryPanel() {
+  if (!libOpen) return "";
+  const pinNames = new Set(getPins().map(p => p.name));
+  return '<div class="lib">' +
+    Object.keys(FOOD_LIBRARY).map(cat =>
+      '<div class="lib-cat">' + cat + '</div>' +
+      '<div class="qa-row">' + FOOD_LIBRARY[cat].map((f,i) =>
+        '<button class="qa lib-item'+(pinNames.has(f.name)?" pinned":"")+'" data-qa="lib" data-cat="'+esc(cat)+'" data-i="'+i+'">' +
+        esc(f.name) + ' <span>' + f.kcal + '</span>' +
+        '<span class="qa-pin" data-qa="lib-pin" data-cat="'+esc(cat)+'" data-i="'+i+'">'+(pinNames.has(f.name)?"\u2605":"+pin")+'</span></button>'
+      ).join("") + '</div>'
+    ).join("") +
+    '<div class="lib-foot">Tap to log it \u00b7 tap <b>+pin</b> to keep it at the top. Values are estimates \u2014 pin it, then tap the pencil to correct.</div>' +
+  '</div>';
+}
+
 function quickAddBar() {
   _qaPins = getPins();
   _qaFreq = frequentItems(6);
-  if (!_qaPins.length && !_qaFreq.length) return "";
-  const clip = s => s.length > 22 ? s.slice(0,20)+"…" : s;
+  const clip = s => s.length > 24 ? s.slice(0,22)+"…" : s;
   let html = '<div class="qa-wrap">';
   if (_qaPins.length) {
     html += '<div class="qa-row">' + _qaPins.map((p,i) =>
       '<button class="qa pin" data-qa="pin" data-i="'+i+'">'+esc(clip(p.name))+
-      ' <span>'+p.kcal+'</span><span class="qa-x" data-qa="unpin" data-i="'+i+'">×</span></button>'
+      ' <span>'+p.kcal+'</span>' +
+      '<span class="qa-edit" data-qa="edit" data-i="'+i+'">\u270e</span>' +
+      '<span class="qa-x" data-qa="unpin" data-i="'+i+'">×</span></button>'
     ).join("") + '</div>';
   }
   if (_qaFreq.length) {
@@ -1647,6 +1835,11 @@ function quickAddBar() {
       '<span class="qa-pin" data-qa="pin-add" data-i="'+i+'">+pin</span></button>'
     ).join("") + '</div>';
   }
+  html += '<div class="qa-row">' +
+    '<button class="qa lib-btn" data-qa="lib-toggle">' + (libOpen ? "\u2715 Close list" : "\u002b Common foods") + '</button>' +
+    '<button class="qa lib-btn" data-qa="custom">\u002b Make my own</button>' +
+  '</div>';
+  html += libraryPanel();
   html += '</div>';
   return html;
 }
@@ -1662,15 +1855,24 @@ function handleQaClick(e) {
   else if (action === "freq") { const it = _qaFreq[i]; if (it) addQuickMeal(it); }
   else if (action === "unpin") { unpin(i); }
   else if (action === "pin-add") { const it = _qaFreq[i]; if (it) pinItemObj(it); }
+  else if (action === "lib") { libAdd(el.dataset.cat, i); }
+  else if (action === "lib-pin") { libPin(el.dataset.cat, i); }
+  else if (action === "lib-toggle") { toggleLibrary(); }
+  else if (action === "custom") { addCustomQuick(); }
+  else if (action === "edit") { editPin(i); }
 }
 document.addEventListener("click", handleQaClick);
 
 function addQuickMeal(item) {
+  if (!dayConfirmed) {
+    showToast(null, {ok:false, text:"Tap a day at the top first, so this lands on the right date."});
+    return;
+  }
   const entry = ensureDay(selected);
   const meal = { id: newId(), name: item.name, kcal: item.kcal };
   if (item.note) meal.note = item.note;
   entry.meals.push(meal);
-  try { saveDiary(); showToast(null, {ok:true, text:'Added "'+item.name+'" ('+item.kcal+' kcal) to '+fmtDay(selected)+'.'}); }
+  try { saveDiary(); showToast(null, {ok:true, text:item.name+' \u00b7 '+item.kcal+' kcal \u2192 '+fmtDay(selected)}); }
   catch(e) { showToast(null, {ok:false, text:"Added on screen but SAVE FAILED: "+e.message}); }
   render();
 }
@@ -1766,6 +1968,7 @@ function logSet(exName, dayName) {
   const rEl = document.getElementById("r-"+id);
   const sEl = document.getElementById("s-"+id);
   const mEl = document.getElementById("m-"+id);
+  const boEl = document.getElementById("bo-"+id);
   const ex = getPlan().flatMap(d => d.ex).find(x => x.n === exName);
   const w = getWorkouts();
   if (!w[exName]) w[exName] = [];
@@ -1779,6 +1982,7 @@ function logSet(exName, dayName) {
     reps: rEl ? rEl.value.trim() : "",
     sets: sEl ? sEl.value.trim() : "",
     mins: mins,
+    burnout: boEl ? boEl.value.trim() : "",
     done: true,
   });
 
@@ -1884,7 +2088,8 @@ function historyBlock(ex) {
     const detail = cardio
       ? (sRec.mins ? sRec.mins + " min" : "\u2014")
       : (sRec.weight ? toDisplayWeight(sRec.weight, setUnitOf(sRec)) + " " + U : "bodyweight") +
-        (sRec.sets ? " \u00d7 " + sRec.sets : "") + (sRec.reps ? " \u00d7 " + sRec.reps : "");
+        (sRec.sets ? " \u00d7 " + sRec.sets : "") + (sRec.reps ? " \u00d7 " + sRec.reps : "") +
+        (sRec.burnout ? "  +" + sRec.burnout + " burnout" : "");
     return '<div class="hl-row"><span class="hl-d">'+fmtShort(sRec.date)+'</span>' +
       '<span class="hl-v">'+esc(detail)+'</span>' +
       '<span class="hl-a '+cls+'">'+dir+'</span></div>';
@@ -2017,7 +2222,7 @@ function exCard(e, dayName) {
   const tgtLine = tgt
     ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+(tgt.verdict==="STUCK"?" stuck":"")+(tgt.verdict==="GO DOWN"?" down":"")+'">' +
       '<div class="tg-head">TODAY <span class="tg-verdict '+(tgt.verdict==="GO UP"?"up":tgt.verdict==="STUCK"?"stuck":tgt.verdict==="GO DOWN"?"down":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
-      (tgt.weight === "" ? '<div class="tg-big">Bodyweight</div>'
+      (tgt.weight === "" ? '<div class="tg-big">'+(tgt.timeTarget ? 'Target: <b>'+esc(tgt.timeTarget)+'</b>' : 'Bodyweight')+'</div>'
         : '<div class="tg-big">TOTAL: <b>'+tgt.weight+'</b> '+U+'</div>' +
           (pair ? '<div class="tg-hand">= <b>'+perHand(tgt.weight)+' '+U+'</b> in each hand</div>' : '')) +
       '<div class="tg-sr">' +
@@ -2072,6 +2277,7 @@ function exCard(e, dayName) {
           (todaySet.sets ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.sets)+'</b> sets' : '') +
           (todaySet.reps ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.reps)+'</b> reps' : '') +
         '</div>' +
+        (todaySet.burnout ? '<div class="done-burn">+ burnout set: <b>'+esc(todaySet.burnout)+'</b> reps</div>' : '') +
         '<div class="done-tag">Done today \u2014 nothing more to do here</div>' +
         historyBlock(e) +
         (tgt && tgt.weight !== "" ? '<div class="next-line">Next session aim: <b>'+tgt.weight+' '+U+'</b>' +
@@ -2084,7 +2290,8 @@ function exCard(e, dayName) {
     const lastMins = last && last.mins ? last.mins : "";
     const defMins = (e.s.match(/(\d+)\s*[–-]\s*(\d+)\s*min/) || [])[2]
                  || (e.s.match(/(\d+)\s*min/) || [])[1] || "20";
-    const preM = lastMins || defMins;
+    const tTgt = targetFor(e);
+    const preM = (tTgt && tTgt.mins) ? tTgt.mins : (lastMins || defMins);
     const est = cardioBurn(e, preM);
     return '<div class="ex-card' + (status==="skipped" ? " ex-skipped" : "") + '" id="exc-' + id + '">' +
       '<div class="ex-fig">'+exSvg(e.fig)+'</div>' +
@@ -2116,6 +2323,7 @@ function exCard(e, dayName) {
         '<div class="lf"><label>'+(loadLabel(e)?U+' total':'\u2014')+'</label><input id="w-'+id+'" inputmode="decimal" value="'+esc(preW)+'"></div>' +
         '<div class="lf"><label>sets</label><input id="s-'+id+'" inputmode="numeric" value="'+esc(preS)+'"></div>' +
         '<div class="lf"><label>reps</label><input id="r-'+id+'" inputmode="numeric" value="'+esc(preR)+'"></div>' +
+        (backoffSet(e, tgt && tgt.weight) ? '<div class="lf burn"><label>burnout reps</label><input id="bo-'+id+'" inputmode="numeric" placeholder="reps" value=""></div>' : '') +
         '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
         (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' :
                   '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>') +
@@ -2642,7 +2850,7 @@ function exSvg(kind) {
    waist trim (via deficit), keep his incline-walk cardio. */
 const DEFAULT_PLAN = [
   { name: "Day 1 — Chest & Triceps", burn: 300, meta: "~50 min + incline walk", ex: [
-    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0 mph", c:["Set incline 12%, speed 3.0.","Warm-up only — don't tire yourself out."], p:"" },
+    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"5–8 min · 12% · 3.0 mph", c:["Set incline 12%, speed 3.0.","Warm-up only — don't tire yourself out."], p:"" },
     { fig:"bench", n:"Dumbbell bench press", load:"total", pair:1, s:"4 × 8–10", c:["Lie flat, one dumbbell in each hand.","Lower to chest slowly, press up hard.","Last 2 reps should be a real fight."], p:"" },
     { fig:"press", n:"Incline dumbbell press", load:"total", pair:1, s:"3 × 8–10", c:["Set the bench to about 30 degrees.","One dumbbell in each hand, press up and slightly in."], p:"" },
     { fig:"fly", n:"Chest fly (squeeze machine)", load:"total", s:"3 × 12", c:["Machine weight — read the stack.","Squeeze and hold 1 second in the middle."], p:"" },
@@ -2650,17 +2858,17 @@ const DEFAULT_PLAN = [
     { fig:"press", n:"Overhead triceps extension", load:"total", s:"3 × 10–12", c:["One dumbbell held with both hands, or a rope overhead.","Lower behind your head for a full stretch.","Slow on the way down."], p:"" },
   ]},
   { name: "Day 2 — Back & Biceps", burn: 310, meta: "~55 min · core finisher", ex: [
-    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8–10 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
+    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"5–8 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
     { fig:"pulldown", n:"Lat pulldown", load:"total", s:"4 × 8–10", c:["Machine stack weight.","Pull the bar to your upper chest, elbows down and back.","Don't lean back to muscle it down."], p:"" },
     { fig:"row", n:"Seated cable row", load:"total", s:"3 × 10", c:["Cable stack weight.","Chest tall, squeeze your shoulder blades together."], p:"" },
     { fig:"curl", n:"Dumbbell curls", load:"total", pair:1, s:"3 × 8–10", c:["One dumbbell in each hand, palms facing up.","No swinging — keep your elbows still."], p:"" },
     { fig:"curl", n:"Hammer curls", load:"total", pair:1, s:"3 × 10–12", c:["One dumbbell in each hand, palms facing IN (thumbs up).","Elbows stay tucked."], p:"" },
     { fig:"row", n:"Face pulls", load:"total", s:"3 × 15", c:["Cable stack weight, rope at head height.","Pull the rope to your face, elbows high.","Light weight, strict form."], p:"" },
-    { fig:"plank", n:"Dead bug", load:"body", s:"3 × 8 each side", c:["On your back, opposite arm and leg reach away slowly.","Lower back stays pressed to the floor the whole time."], p:"Slow it down before adding reps — 4 seconds out, 4 back." },
-    { fig:"plank", n:"Pallof press", load:"total", s:"3 × 10 each side", c:["Stand side-on to a cable, press the handle straight out from your chest.","Resist the twist — that is the whole exercise."], p:"Add weight when you stop wobbling at 3×10." },
+    { fig:"plank", n:"Dead bug", load:"body", s:"2 × 8 each side", c:["On your back, opposite arm and leg reach away slowly.","Lower back stays pressed to the floor the whole time."], p:"Slow it down before adding reps — 4 seconds out, 4 back." },
+    { fig:"plank", n:"Pallof press", load:"total", s:"2 × 10 each side", c:["Stand side-on to a cable, press the handle straight out from your chest.","Resist the twist — that is the whole exercise."], p:"Add weight when you stop wobbling at 3×10." },
   ]},
   { name: "Day 3 — Legs & Core", burn: 320, meta: "~45 min + optional run", ex: [
-    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"8 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
+    { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"5 min · 12% · 3.0", c:["Warm-up pace."], p:"" },
     { fig:"squat", n:"Goblet squat", load:"total", s:"4 × 10", c:["ONE dumbbell held at your chest with both hands.","Sit straight down between your heels.","Chest up the whole way."], p:"" },
     { fig:"squat", n:"Romanian deadlift", load:"total", pair:1, s:"3 × 10", c:["One dumbbell in each hand, or a barbell.","Push your hips back, knees soft.","Stop when you feel the hamstring stretch."], p:"" },
     { fig:"plank", n:"Plank", load:"body", s:"3 × 45–60 sec", c:["Forearms and toes on the floor.","Squeeze your glutes, don't let your hips sag."], p:"" },
@@ -2670,11 +2878,11 @@ const DEFAULT_PLAN = [
   { name: "Day 4 — Shoulders & Arms", burn: 295, meta: "~50 min · core finisher + walk", ex: [
     { fig:"press", n:"Dumbbell shoulder press", load:"total", pair:1, s:"4 × 8–10", c:["One dumbbell in each hand, at shoulder height.","Press straight overhead, don't arch your back."], p:"" },
     { fig:"fly", n:"Lateral raises", load:"total", pair:1, s:"3 × 12–15", c:["One dumbbell in each hand, arms out to the side.","Stop at shoulder height, no higher.","Light weight — these are not meant to be heavy."], p:"" },
-    { fig:"curl", n:"EZ-bar curls", load:"total", s:"3 × 8–10", c:["EZ-bar: count the bar plus the plates.","Elbows tucked, no swinging."], p:"" },
-    { fig:"pushdown", n:"Close-grip bench press", load:"total", s:"3 × 8–10", c:["Barbell: count the bar plus the plates.","Hands shoulder-width, elbows close to your body."], p:"" },
-    { fig:"plank", n:"Hanging knee raise", load:"body", s:"3 × 10–12", c:["Hang from the bar, knees up to your chest.","No swinging. Lower slowly."], p:"" },
-    { fig:"plank", n:"Long-lever plank", load:"body", s:"3 × 30–40 sec", c:["Plank with elbows further forward than normal — much harder.","Ribs down, glutes tight, no sagging."], p:"Add 5 sec when 40 feels steady, or walk the elbows further out." },
-    { fig:"treadmill", n:"Incline walk finisher", load:"body", s:"20–25 min · 12% · 3.0", c:["Your favourite, at full length — great low-impact burn for the AZ heat months."], p:"" },
+    { fig:"curl", n:"EZ-bar curls", load:"total", s:"2 × 8–10", c:["EZ-bar: count the bar plus the plates.","Elbows tucked, no swinging."], p:"" },
+    { fig:"pushdown", n:"Close-grip bench press", load:"total", s:"2 × 8–10", c:["Barbell: count the bar plus the plates.","Hands shoulder-width, elbows close to your body."], p:"" },
+    { fig:"plank", n:"Hanging knee raise", load:"body", s:"2 × 10–12", c:["Hang from the bar, knees up to your chest.","No swinging. Lower slowly."], p:"" },
+    { fig:"plank", n:"Long-lever plank", load:"body", s:"2 × 30–40 sec", c:["Plank with elbows further forward than normal — much harder.","Ribs down, glutes tight, no sagging."], p:"Add 5 sec when 40 feels steady, or walk the elbows further out." },
+    { fig:"treadmill", n:"Incline walk finisher", load:"body", s:"15–20 min · 12% · 3.0", c:["Your favourite, at full length — great low-impact burn for the AZ heat months."], p:"" },
   ]},
 ];
 
@@ -2827,6 +3035,290 @@ function bmSummary() {
   return out.join("  ·  ") || "Tap the figure to mark goals";
 }
 
+/* ===== Session timing =====
+   Estimate each day from real work: sets x (work + prescribed rest), plus
+   cardio minutes. Keeps the plan honest about the 45-60 min target. */
+function estimateMinutes(day) {
+  let sec = 0;
+  day.ex.forEach(e => {
+    if (isCardio(e)) {
+      const m = (e.s.match(/(\d+)\s*[\u2013-]\s*(\d+)\s*min/) || [])[2]
+             || (e.s.match(/(\d+)\s*min/) || [])[1];
+      sec += (parseFloat(m) || 10) * 60;
+      return;
+    }
+    const sets = parseInt((e.s.match(/^(\d+)/) || [])[1], 10) || 3;
+    const rest = restSeconds(e);
+    const work = e.load === "body" ? 45 : 40;
+    sec += sets * (work + rest);
+    if (backoffSet(e, 100)) sec += 60;   // burnout set plus its rest
+  });
+  return Math.round(sec / 60);
+}
+
+let sessStart = null, sessTimer = null, sessDayIdx = null;
+function startSession(di) {
+  sessStart = Date.now();
+  sessDayIdx = di;
+  try { localStorage.setItem("ledger-session", JSON.stringify({ start: sessStart, di: di })); } catch(e) {}
+  clearInterval(sessTimer);
+  sessTimer = setInterval(showSessionBar, 1000);
+  showSessionBar();
+}
+function resumeSession() {
+  try {
+    const raw = JSON.parse(localStorage.getItem("ledger-session"));
+    if (!raw || !raw.start) return;
+    /* Anything over 3 hours is a session someone forgot to stop. */
+    if (Date.now() - raw.start > 3*3600*1000) { localStorage.removeItem("ledger-session"); return; }
+    sessStart = raw.start; sessDayIdx = raw.di;
+    clearInterval(sessTimer);
+    sessTimer = setInterval(showSessionBar, 1000);
+    showSessionBar();
+  } catch(e) {}
+}
+function endSession() {
+  clearInterval(sessTimer);
+  sessTimer = null;
+  const mins = sessStart ? Math.round((Date.now() - sessStart) / 60000) : 0;
+  const day = sessDayIdx != null ? getPlan()[sessDayIdx] : null;
+  sessStart = null;
+  localStorage.removeItem("ledger-session");
+  const b = document.getElementById("sess-bar");
+  if (b) b.style.display = "none";
+  if (day) {
+    const left = unfinishedIn(day);
+    if (left.length) {
+      showHomeFinisher(day, left, mins);
+    } else {
+      showToast(null, {ok:true, text:"Session done in " + mins + " min. Everything ticked off."});
+    }
+  }
+  renderCoach();
+}
+function unfinishedIn(day) {
+  return day.ex.filter(e => todayStatus(e.n) !== "done");
+}
+function showSessionBar() {
+  if (!sessStart) return;
+  let b = document.getElementById("sess-bar");
+  if (!b) {
+    b = document.createElement("div");
+    b.id = "sess-bar";
+    b.className = "sess-bar";
+    document.body.appendChild(b);
+  }
+  const day = sessDayIdx != null ? getPlan()[sessDayIdx] : null;
+  if (!day) return;
+  const elapsed = Math.floor((Date.now() - sessStart) / 1000);
+  const est = estimateMinutes(day);
+  const doneCount = day.ex.filter(e => todayStatus(e.n) === "done").length;
+  const total = day.ex.length;
+  /* On track = you are through the same share of the work as of the time. */
+  const expected = est > 0 ? (elapsed / 60) / est : 0;
+  const actual = total > 0 ? doneCount / total : 0;
+  let state = "ok", label = "ON TRACK";
+  if (elapsed / 60 > est) { state = "over"; label = "OVER TIME"; }
+  else if (expected - actual > 0.2) { state = "behind"; label = "BEHIND"; }
+  else if (actual - expected > 0.15) { state = "ahead"; label = "AHEAD"; }
+  b.className = "sess-bar " + state;
+  b.innerHTML =
+    '<div class="sb-left"><div class="sb-l">' + label + ' \u00b7 ' + doneCount + '/' + total + ' done</div>' +
+    '<div class="sb-n">' + esc(day.name.replace(/^Day \d+ \u2014 /, "")) + ' \u00b7 est ' + est + ' min</div></div>' +
+    '<div class="sb-time">' + fmtClock(elapsed) + '</div>' +
+    '<button class="rb-btn" onclick="endSession()">Finish</button>';
+  b.style.display = "flex";
+}
+
+/* Bodyweight work to mop up anything missed, doable at a desk or at home. */
+const HOME_FINISHERS = {
+  chest:   [{ n: "Push-ups", s: "3 x max reps" }, { n: "Incline push-ups (hands on desk)", s: "3 x 15" }],
+  back:    [{ n: "Superman holds", s: "3 x 30 sec" }, { n: "Doorway rows", s: "3 x 12" }],
+  arms:    [{ n: "Diamond push-ups", s: "3 x 10" }, { n: "Chair dips", s: "3 x 12" }],
+  legs:    [{ n: "Bodyweight squats", s: "3 x 20" }, { n: "Walking lunges", s: "3 x 12 each leg" }],
+  shoulders:[{ n: "Pike push-ups", s: "3 x 10" }, { n: "Wall angels", s: "3 x 15" }],
+  core:    [{ n: "Plank", s: "3 x 45 sec" }, { n: "Dead bug", s: "3 x 10 each side" }],
+};
+function finisherFor(exName) {
+  const n = exName.toLowerCase();
+  if (/bench|chest|fly|push/.test(n)) return HOME_FINISHERS.chest;
+  if (/pulldown|row|face pull/.test(n)) return HOME_FINISHERS.back;
+  if (/curl|tricep|pushdown|extension|close-grip/.test(n)) return HOME_FINISHERS.arms;
+  if (/squat|deadlift|leg|lunge/.test(n)) return HOME_FINISHERS.legs;
+  if (/shoulder|lateral|press/.test(n)) return HOME_FINISHERS.shoulders;
+  return HOME_FINISHERS.core;
+}
+function showHomeFinisher(day, left, mins) {
+  const picks = [];
+  const seen = new Set();
+  left.forEach(e => {
+    if (isCardio(e)) return;
+    finisherFor(e.n).forEach(f => { if (!seen.has(f.n) && picks.length < 4) { seen.add(f.n); picks.push(f); } });
+  });
+  if (!picks.length) picks.push(...HOME_FINISHERS.core);
+  try { localStorage.setItem("ledger-homework", JSON.stringify({ date: todayISO(), picks: picks, missed: left.map(e=>e.n) })); } catch(e) {}
+  renderCoach();
+  showToast(null, {ok:true, text:"Session ended at " + mins + " min with " + left.length + " left. Home finisher added below."});
+}
+function getHomework() {
+  try {
+    const h = JSON.parse(localStorage.getItem("ledger-homework"));
+    return (h && h.date === todayISO()) ? h : null;
+  } catch(e) { return null; }
+}
+function clearHomework() {
+  localStorage.removeItem("ledger-homework");
+  renderCoach();
+}
+function homeworkPanel() {
+  const h = getHomework();
+  if (!h) return "";
+  return '<div class="co-box" style="border-color:var(--amber)">' +
+    '<div class="t" style="color:#8A6410">Finish at home</div>' +
+    '<div class="co-sub" style="margin-bottom:8px">You ran out of gym time on ' + h.missed.length +
+    ' exercise' + (h.missed.length===1?"":"s") + '. No weights needed for these, do them between meetings or tonight.</div>' +
+    h.picks.map(f => '<div class="hw-row"><span>' + esc(f.n) + '</span><span class="hw-s">' + esc(f.s) + '</span></div>').join("") +
+    '<div class="btn-row"><button class="co-btn ghost" onclick="clearHomework()">Done, clear this</button></div>' +
+  '</div>';
+}
+
+/* ===== Conditioning =====
+   Circuits for the cardio and intensity side. These are bodyweight or light,
+   done for time, and finish a session rather than replace the lifting. */
+const CONDITIONING = [
+  { n: "Cindy (20 min AMRAP)", fig: "plank", load: "body", s: "20 min",
+    c: ["5 pull-ups, 10 push-ups, 15 air squats.","Repeat that round as many times as you can in 20 minutes.","Score = rounds completed. Beat it next time."],
+    kcal: 240, rest: 0 },
+  { n: "Push-up ladder", fig: "plank", load: "body", s: "8-10 min",
+    c: ["1 push-up, rest 10 sec, 2 push-ups, rest, 3, and so on.","Stop when you cannot finish a rung clean.","Score = highest rung reached."],
+    kcal: 90, rest: 0 },
+  { n: "Treadmill intervals", fig: "treadmill", load: "body", s: "10-12 min",
+    c: ["30 sec hard, 90 sec easy walk. Repeat 6 times.","Hard means you cannot hold a conversation.","Indoors only in the Phoenix summer."],
+    kcal: 150, rest: 0 },
+  { n: "Bodyweight circuit", fig: "squat", load: "body", s: "12 min",
+    c: ["10 squats, 10 push-ups, 10 lunges each leg, 20 sec plank.","Move straight between them, rest 60 sec at the end of a round.","4 rounds."],
+    kcal: 160, rest: 0 },
+  { n: "Farmer carry finisher", fig: "row", load: "total", s: "4 x 40 m",
+    c: ["Heavy dumbbell in each hand, walk tall and braced.","Rest 60 sec between trips."],
+    kcal: 80, rest: 60 },
+];
+function addConditioning(i, dayIdx) {
+  const c = CONDITIONING[i];
+  if (!c) return;
+  const plan = JSON.parse(JSON.stringify(getPlan()));
+  const day = plan[dayIdx];
+  if (!day) return;
+  if (day.ex.some(x => x.n === c.n)) { showToast(null, {ok:false, text:"Already on that day."}); return; }
+  day.ex.push({ fig: c.fig, n: c.n, load: c.load, s: c.s, c: c.c, p: "", rest: c.rest });
+  try { savePlan(plan); showToast(null, {ok:true, text:c.n + " added to " + day.name + "."}); }
+  catch(e) { showToast(null, {ok:false, text:"Could not save: " + e.message}); }
+  renderCoach();
+}
+function conditioningPanel() {
+  const days = getPlan();
+  return '<div class="co-box collapsible" id="cb-cond"><div class="t ch" onclick="toggleBox(\'cb-cond\')">Conditioning and HIIT <span class="caret">\u25be</span></div>' +
+    '<div class="cb-body">' +
+    '<div class="co-sub" style="margin-bottom:10px">Pick one, choose a day, and it gets added as a finisher. Two a week is plenty alongside the lifting. Skip it the day before legs.</div>' +
+    CONDITIONING.map((c,i) =>
+      '<div class="cond-row"><div class="cond-n">' + esc(c.n) + ' <span class="cond-k">~' + c.kcal + ' kcal</span>' +
+      '<div class="cond-d">' + esc(c.c[0]) + '</div></div>' +
+      '<select class="cond-sel" id="cond-' + i + '">' +
+        days.map((d,di) => '<option value="'+di+'">' + esc(d.name.replace(/^Day \d+ \u2014 /,"")) + '</option>').join("") +
+      '</select>' +
+      '<button class="co-btn sm" onclick="addConditioning(' + i + ', parseInt(document.getElementById(\'cond-' + i + '\').value,10))">Add</button></div>'
+    ).join("") +
+    '</div></div>';
+}
+
+/* ===== Catch-up session =====
+   After time off, one combined workout covering the areas you care about,
+   rather than four separate overdue nags. */
+async function buildCatchUp() {
+  const key = localStorage.getItem(LS_KEY);
+  const btn = document.getElementById("catchup-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Building..."; }
+  const gapDays = (function(){
+    let latest = null;
+    const w = getWorkouts();
+    Object.keys(w).forEach(n => w[n].forEach(x => { if (x.done && (!latest || x.date > latest)) latest = x.date; }));
+    return latest ? daysBetween(latest, todayISO()) : 99;
+  })();
+
+  if (!key) {
+    /* Works without an API key too: pick the big compounds from each day. */
+    const plan = getPlan();
+    const picks = [];
+    plan.forEach(d => {
+      const main = d.ex.filter(e => !isCardio(e) && e.load !== "body").slice(0, 2);
+      main.forEach(e => { if (picks.length < 7) picks.push(e); });
+    });
+    saveCatchUp({ name: "Catch-up session", gap: gapDays,
+      ex: picks.map(e => ({ n: e.n, s: "3 x 8", why: "" })),
+      note: gapDays + " days since your last session. Full body, lighter than usual, 3 sets each." });
+    if (btn) { btn.disabled = false; btn.textContent = "Build catch-up session"; }
+    renderCoach();
+    return;
+  }
+  try {
+    const bm = getBodymap();
+    const grow = Object.keys(bm).filter(k => bm[k] === "grow");
+    const prompt = coachContext() +
+      "\n\nHe has not trained for " + gapDays + " days and wants ONE combined catch-up session rather than several overdue workouts. " +
+      "Build a single full-body session, 45-60 minutes, that covers his priority areas" +
+      (grow.length ? " (especially " + grow.join(", ") + ")" : "") + ". " +
+      "Use exercises already in his plan where sensible. Weights should be lighter than his last logged numbers because of the layoff, " +
+      "and every weight must be a multiple of 5 " + getUnits() + " TOTAL. Include one conditioning finisher. 6 to 8 exercises.\n\n" +
+      'Respond with ONLY JSON: {"note":"one or two sentences","ex":[{"n":"Exercise name","s":"3 x 8","why":"short reason"}]}';
+    const data = await callClaude(key, { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] });
+    const raw = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
+    const parsed = JSON.parse(raw.replace(/```json|```/g,"").trim());
+    saveCatchUp({ name: "Catch-up session", gap: gapDays, ex: (parsed.ex||[]).slice(0,8), note: parsed.note || "" });
+    renderCoach();
+    showToast(null, {ok:true, text:"Catch-up session ready."});
+  } catch(e) {
+    showToast(null, {ok:false, text:"Could not build it: " + e.message});
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Build catch-up session"; }
+  }
+}
+function saveCatchUp(o) {
+  try { localStorage.setItem("ledger-catchup", JSON.stringify(Object.assign({date: todayISO()}, o))); } catch(e) {}
+}
+function getCatchUp() {
+  try {
+    const c = JSON.parse(localStorage.getItem("ledger-catchup"));
+    return (c && daysBetween(c.date, todayISO()) <= 3) ? c : null;
+  } catch(e) { return null; }
+}
+function clearCatchUp() { localStorage.removeItem("ledger-catchup"); renderCoach(); }
+
+/* How long since anything was logged. */
+function daysSinceAnySession() {
+  let latest = null;
+  const w = getWorkouts();
+  Object.keys(w).forEach(n => w[n].forEach(x => { if (x.done && (!latest || x.date > latest)) latest = x.date; }));
+  return latest ? daysBetween(latest, todayISO()) : null;
+}
+function catchUpPanel() {
+  const gap = daysSinceAnySession();
+  const cu = getCatchUp();
+  if (cu) {
+    return '<div class="co-box" style="border-color:var(--cyan)">' +
+      '<div class="t" style="color:#0A6C78">Catch-up session</div>' +
+      (cu.note ? '<div class="co-sub" style="margin-bottom:8px">'+esc(cu.note)+'</div>' : '') +
+      cu.ex.map(x => '<div class="hw-row"><span>'+esc(x.n)+'</span><span class="hw-s">'+esc(x.s)+'</span></div>').join("") +
+      '<div class="co-sub" style="margin-top:8px">Tick these off on the normal cards as you do them.</div>' +
+      '<div class="btn-row"><button class="co-btn ghost" onclick="clearCatchUp()">Clear</button></div>' +
+    '</div>';
+  }
+  if (gap == null || gap < 6) return "";
+  return '<div class="co-box" style="border-color:var(--cyan)">' +
+    '<div class="t" style="color:#0A6C78">' + gap + ' days since your last session</div>' +
+    '<div class="co-sub" style="margin-bottom:10px">Rather than four separate overdue workouts, get one combined full-body session that covers your priority areas and eases you back in.</div>' +
+    '<div class="btn-row"><button class="co-btn" id="catchup-btn" onclick="buildCatchUp()">Build catch-up session</button></div>' +
+  '</div>';
+}
+
 function renderCoach() {
   const v = document.getElementById("view-coach");
   const p = getProfile();
@@ -2837,7 +3329,9 @@ function renderCoach() {
 
   v.innerHTML =
     /* 1. What to do, right at the top. */
+    catchUpPanel() +
     nextUpPanel() +
+    homeworkPanel() +
     carryForwardPanel() +
 
     getPlan().map((day, di) => {
@@ -2858,6 +3352,7 @@ function renderCoach() {
 
     /* 2. Everything else, folded away. */
     '<div class="co-more">More</div>' +
+    conditioningPanel() +
 
     '<div class="co-box collapsible" id="cb-prog"><div class="t ch" onclick="toggleBox(\'cb-prog\')">Progress <span class="caret">\u25be</span></div>' +
       '<div class="cb-body">' + progressionInner() + '</div></div>' +
@@ -3995,6 +4490,7 @@ try {
 if (ensureItemIds()) { try { localStorage.setItem(LS_DIARY, JSON.stringify(diary)); } catch(e) {} }
 render();
 refreshSyncChip();
+resumeSession();
 /* Sync on open so you always start from the latest across devices. */
 if (ghToken()) syncNow(true);
 document.addEventListener("visibilitychange", () => {
