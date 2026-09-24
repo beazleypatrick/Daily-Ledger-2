@@ -27,6 +27,7 @@
     --serif:'Fraunces','Iowan Old Style',Palatino,Georgia,serif;
     --sans:'Nunito','Avenir Next','Segoe UI',system-ui,sans-serif;
     --radius:16px;
+    --kb:0px;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body {
@@ -261,7 +262,7 @@
     text-transform:uppercase; margin:26px 0 10px; padding-top:14px; border-top:1px solid var(--line);
   }
   .coachbar {
-    position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    position:fixed; left:0; right:0; bottom:var(--kb,0px); padding:10px 14px calc(10px + env(safe-area-inset-bottom));
     background:linear-gradient(rgba(233,242,250,0), var(--bg) 30%); z-index:5;
   }
   .coachbar .inner { max-width:960px; margin:0 auto; }
@@ -354,7 +355,7 @@
   .entry-day.off { border-color:var(--amber); }
   .ed-warn { color:#8A6410; font-weight:700; }
   .rest-bar {
-    position:fixed; left:0; right:0; bottom:0; z-index:20; display:none;
+    position:fixed; left:0; right:0; bottom:var(--kb,0px); z-index:20; display:none;
     align-items:center; gap:10px; padding:12px 14px calc(12px + env(safe-area-inset-bottom));
     background:var(--blue); color:#fff; box-shadow:0 -3px 14px rgba(18,58,90,.25);
   }
@@ -411,6 +412,7 @@
   .done-burn { font-family:var(--mono); font-size:12.5px; color:#8A6410; margin-top:3px; }
   .lf.burn label { color:#8A6410; }
   .over-time { color:#8A6410; font-weight:700; }
+  .burn-note { font-size:11.5px; color:var(--ink-dim); line-height:1.45; margin-top:6px; flex-basis:100%; }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -461,7 +463,7 @@
   .hint { font-size:12px; color:var(--ink-dim); line-height:1.5; margin-top:8px; }
 
   .chatbar {
-    position:fixed; left:0; right:0; bottom:0; padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+    position:fixed; left:0; right:0; bottom:var(--kb,0px); padding:10px 14px calc(10px + env(safe-area-inset-bottom));
     background:linear-gradient(rgba(233,242,250,0), var(--bg) 30%);
   }
   .chatbar .inner { max-width:960px; margin:0 auto; }
@@ -554,7 +556,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v41";
+const APP_VERSION = "v42";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1286,11 +1288,46 @@ function isIsolation(name) {
    TOTAL steps, because the rack jumps 5 lb per hand. */
 /* Snap to what exists on a rack. For a PAIR of dumbbells the total must be a
    multiple of 10 lb, so each hand lands on a real 5 lb dumbbell. */
+/* ===== Equipment =====
+   Weights have to exist in your gym. Dumbbells come off a rack in fixed
+   sizes, so a PAIR total is twice one of those. Cable stacks move in 10 lb
+   plates, except the few machines with a 5 lb add-on pin. */
+const DUMBBELL_LB = [3,5,8,10,12,15,17.5,20,22.5,25,27.5,30,32.5,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
+const DUMBBELL_KG = [2,4,5,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,40,45,50];
+/* Machines where a 5 lb adder is available. */
+const FINE_MACHINES = /squeeze|chest fly|pulldown|seated cable row/i;
+
+function nearestFrom(list, v) {
+  let best = list[0], gap = Math.abs(list[0] - v);
+  list.forEach(x => { const g = Math.abs(x - v); if (g < gap) { gap = g; best = x; } });
+  return best;
+}
 function snapWeight(v, ex) {
-  const pair = isPairLift(ex);
-  const step = getUnits() === "lb" ? (pair ? 10 : 5) : (pair ? 5 : 2.5);
   const n = parseFloat(v);
-  if (isNaN(n)) return 0;
+  if (isNaN(n) || n <= 0) return 0;
+  const lb = getUnits() === "lb";
+
+  /* A pair of dumbbells: snap the PER HAND weight to a real dumbbell, then
+     double it. This is why 55 total was being suggested when it cannot be
+     loaded. */
+  if (isPairLift(ex)) {
+    const ladder = lb ? DUMBBELL_LB : DUMBBELL_KG;
+    const perHand = nearestFrom(ladder, n / 2);
+    return Math.round(perHand * 2 * 10) / 10;
+  }
+  /* A single dumbbell held in both hands, e.g. goblet squat. */
+  if (ex && /goblet|overhead triceps/i.test(ex.n)) {
+    const ladder = lb ? DUMBBELL_LB : DUMBBELL_KG;
+    return nearestFrom(ladder, n);
+  }
+  /* Cable stacks and machines. */
+  if (ex && FINE_MACHINES.test(ex.n)) {
+    const step = lb ? 5 : 2.5;
+    return Math.max(step, Math.round(n / step) * step);
+  }
+  if (ex && isCardio(ex)) return 0;
+  /* Everything else on a stack or a bar. */
+  const step = lb ? 10 : 5;
   return Math.max(step, Math.round(n / step) * step);
 }
 /* Only exercises explicitly flagged pair:1 use two dumbbells. A goblet squat
@@ -1303,9 +1340,16 @@ function isDumbbellLift(name) {
   const ex = getPlan().flatMap(d => d.ex).find(x => x.n === name);
   return isPairLift(ex);
 }
+/* The next rung up, not a fixed number, so progression lands on real kit. */
 function increment(name) {
-  if (getUnits() === "lb") return isDumbbellLift(name) ? 10 : 5;
-  return isDumbbellLift(name) ? 4 : 2.5;
+  const ex = getPlan().flatMap(d => d.ex).find(x => x.n === name);
+  if (getUnits() === "lb") {
+    if (isPairLift(ex)) return 5;                       // next dumbbell pair, ~5 total
+    if (ex && FINE_MACHINES.test(ex.n)) return 5;
+    return 10;
+  }
+  if (isPairLift(ex)) return 4;
+  return 5;
 }
 /* Local suggestion: hit the top of the rep range -> add weight; otherwise
    repeat the weight and chase one more rep. */
@@ -1421,13 +1465,23 @@ function layoffAdjust(ex, lastDate) {
 
 /* Time-based work progresses in time, not weight. Cardio creeps up a minute
    at a time; holds add 5 seconds. Both cap out so sessions stay ~45-60 min. */
+/* A plank is measured in seconds; a knee raise is measured in reps. Treating
+   every bodyweight move as timed is why a set of 7 sit-ups came back as
+   "7 sec". */
+function isHold(ex) {
+  /* The prescription says it: "3 x 45 sec" is a hold, "2 x 10-12" is reps.
+     Going off the name caught "hanging knee raise", which is reps. */
+  return /\bsec\b|\bseconds\b/i.test(ex.s || "");
+}
+
 function timeTarget(ex) {
   const hist = exHistory(ex.n);
   const last = hist.length ? hist[hist.length-1] : null;
   const cardio = isCardio(ex);
-  const step = cardio ? 1 : 5;                 // minutes vs seconds
-  const unit = cardio ? "min" : "sec";
-  const cap = cardio ? (/warm-?up/i.test(ex.n) ? 12 : 35) : 90;
+  const hold = !cardio && isHold(ex);
+  const step = cardio ? 1 : (hold ? 5 : 1);           // min / sec / reps
+  const unit = cardio ? "min" : (hold ? "sec" : "reps");
+  const cap = cardio ? (/warm-?up/i.test(ex.n) ? 12 : 35) : (hold ? 90 : 25);
 
   const prescribed = (ex.s.match(/(\d+)\s*[\u2013-]\s*(\d+)/) || [])[2]
                   || (ex.s.match(/(\d+)/) || [])[1] || (cardio ? "20" : "45");
@@ -1448,15 +1502,16 @@ function timeTarget(ex) {
   }
   if (lastVal >= cap) {
     return { weight: "", mins: String(cap), reps: cardio ? "" : String(cap), sets: "",
-             verdict: "HOLD", timeTarget: cap + " " + unit,
+             verdict: "HOLD THERE", timeTarget: cap + " " + unit,
              why: "You have hit the ceiling for this one. Keep it here and push the intensity instead.",
              change: null, src: "local" };
   }
   const next = Math.min(lastVal + step, cap);
   return {
     weight: "", mins: String(next), reps: cardio ? "" : String(next), sets: "",
-    verdict: "GO LONGER", timeTarget: next + " " + unit,
-    why: "Add " + step + " " + unit + " on last time. Small steps add up.",
+    verdict: hold || cardio ? "GO LONGER" : "ONE MORE REP",
+    timeTarget: next + " " + unit,
+    why: "Last time you did " + lastVal + " " + unit + ". Aim for " + next + " " + unit + " today.",
     change: lastVal + " " + unit + "  \u2192  " + next + " " + unit,
     src: "local",
   };
@@ -1969,6 +2024,7 @@ function logSet(exName, dayName) {
   const sEl = document.getElementById("s-"+id);
   const mEl = document.getElementById("m-"+id);
   const boEl = document.getElementById("bo-"+id);
+  const bwEl = document.getElementById("bw-"+id);
   const ex = getPlan().flatMap(d => d.ex).find(x => x.n === exName);
   const w = getWorkouts();
   if (!w[exName]) w[exName] = [];
@@ -1983,6 +2039,7 @@ function logSet(exName, dayName) {
     sets: sEl ? sEl.value.trim() : "",
     mins: mins,
     burnout: boEl ? boEl.value.trim() : "",
+    burnoutWeight: bwEl ? bwEl.value.trim() : "",
     done: true,
   });
 
@@ -2089,7 +2146,7 @@ function historyBlock(ex) {
       ? (sRec.mins ? sRec.mins + " min" : "\u2014")
       : (sRec.weight ? toDisplayWeight(sRec.weight, setUnitOf(sRec)) + " " + U : "bodyweight") +
         (sRec.sets ? " \u00d7 " + sRec.sets : "") + (sRec.reps ? " \u00d7 " + sRec.reps : "") +
-        (sRec.burnout ? "  +" + sRec.burnout + " burnout" : "");
+        (sRec.burnout ? "  + burn " + (sRec.burnoutWeight ? sRec.burnoutWeight + U + " \u00d7 " : "") + sRec.burnout : "");
     return '<div class="hl-row"><span class="hl-d">'+fmtShort(sRec.date)+'</span>' +
       '<span class="hl-v">'+esc(detail)+'</span>' +
       '<span class="hl-a '+cls+'">'+dir+'</span></div>';
@@ -2222,7 +2279,7 @@ function exCard(e, dayName) {
   const tgtLine = tgt
     ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+(tgt.verdict==="STUCK"?" stuck":"")+(tgt.verdict==="GO DOWN"?" down":"")+'">' +
       '<div class="tg-head">TODAY <span class="tg-verdict '+(tgt.verdict==="GO UP"?"up":tgt.verdict==="STUCK"?"stuck":tgt.verdict==="GO DOWN"?"down":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
-      (tgt.weight === "" ? '<div class="tg-big">'+(tgt.timeTarget ? 'Target: <b>'+esc(tgt.timeTarget)+'</b>' : 'Bodyweight')+'</div>'
+      (tgt.weight === "" ? '<div class="tg-big">'+(tgt.timeTarget ? 'Do <b>'+esc(tgt.timeTarget)+'</b> per set' : 'Bodyweight')+'</div>'
         : '<div class="tg-big">TOTAL: <b>'+tgt.weight+'</b> '+U+'</div>' +
           (pair ? '<div class="tg-hand">= <b>'+perHand(tgt.weight)+' '+U+'</b> in each hand</div>' : '')) +
       '<div class="tg-sr">' +
@@ -2277,7 +2334,7 @@ function exCard(e, dayName) {
           (todaySet.sets ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.sets)+'</b> sets' : '') +
           (todaySet.reps ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.reps)+'</b> reps' : '') +
         '</div>' +
-        (todaySet.burnout ? '<div class="done-burn">+ burnout set: <b>'+esc(todaySet.burnout)+'</b> reps</div>' : '') +
+        (todaySet.burnout ? '<div class="done-burn">+ burnout: <b>'+esc(todaySet.burnoutWeight||"")+'</b> '+(todaySet.burnoutWeight?U+' \u00d7 ':'')+'<b>'+esc(todaySet.burnout)+'</b> reps</div>' : '') +
         '<div class="done-tag">Done today \u2014 nothing more to do here</div>' +
         historyBlock(e) +
         (tgt && tgt.weight !== "" ? '<div class="next-line">Next session aim: <b>'+tgt.weight+' '+U+'</b>' +
@@ -2323,7 +2380,12 @@ function exCard(e, dayName) {
         '<div class="lf"><label>'+(loadLabel(e)?U+' total':'\u2014')+'</label><input id="w-'+id+'" inputmode="decimal" value="'+esc(preW)+'"></div>' +
         '<div class="lf"><label>sets</label><input id="s-'+id+'" inputmode="numeric" value="'+esc(preS)+'"></div>' +
         '<div class="lf"><label>reps</label><input id="r-'+id+'" inputmode="numeric" value="'+esc(preR)+'"></div>' +
-        (backoffSet(e, tgt && tgt.weight) ? '<div class="lf burn"><label>burnout reps</label><input id="bo-'+id+'" inputmode="numeric" placeholder="reps" value=""></div>' : '') +
+        (function(){
+          const bo = backoffSet(e, tgt && tgt.weight);
+          if (!bo) return "";
+          return '<div class="lf burn"><label>burn '+U+'</label><input id="bw-'+id+'" inputmode="decimal" value="'+bo.weight+'"></div>' +
+                 '<div class="lf burn"><label>burn reps</label><input id="bo-'+id+'" inputmode="numeric" placeholder="reps" value=""></div>';
+        })() +
         '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
         (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' :
                   '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>') +
@@ -3453,9 +3515,28 @@ function restoreOpenDays() {
 function logWorkout(di) {
   const day = getPlan()[di];
   const entry = ensureDay(todayISO());
-  entry.exercise.push({ id: newId(), name: "Gym — " + day.name.replace(/^Day \d+ — /,""), kcal: day.burn });
+  /* Cardio ticked off on its own card has already written its calories to
+     the log. Subtract that so the walk is never counted twice. */
+  const shortName = day.name.replace(/^Day \d+ — /,"");
+  const already = (entry.exercise || [])
+    .filter(x => day.ex.some(e => isCardio(e) && String(x.name).indexOf(e.n) === 0)
+              || String(x.name).indexOf("Gym — " + shortName) === 0)
+    .reduce((acc, x) => acc + (x.kcal || 0), 0);
+  const remaining = Math.max(0, day.burn - already);
+  if (remaining <= 0) {
+    showToast(null, {ok:true, text:"Already logged " + already + " kcal from this session. Nothing left to add."});
+    return;
+  }
+  entry.exercise.push({
+    id: newId(),
+    name: "Gym — " + day.name.replace(/^Day \d+ — /,"") + (already ? " (weights only)" : ""),
+    kcal: remaining,
+  });
   selected = todayISO();
-  try { saveDiary(); showToast(null, {ok:true, text:day.name+" logged — "+day.burn+" kcal burn added to today."}); }
+  try {
+    saveDiary();
+    showToast(null, {ok:true, text: remaining + " kcal added" + (already ? ", on top of " + already + " already logged from cardio." : " for " + day.name + ".")});
+  }
   catch(e) { showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: "+e.message}); }
   render();
 }
@@ -4491,6 +4572,29 @@ if (ensureItemIds()) { try { localStorage.setItem(LS_DIARY, JSON.stringify(diary
 render();
 refreshSyncChip();
 resumeSession();
+
+/* Keep the input above the on-screen keyboard. Mobile browsers shrink the
+   visual viewport rather than the layout viewport, so the fixed bars need
+   lifting by the difference. */
+(function keyboardAware() {
+  const vv = window.visualViewport;
+  if (!vv) return;
+  const lift = () => {
+    const gap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty("--kb", gap + "px");
+    /* Scroll the focused field into view once the keyboard has settled. */
+    const a = document.activeElement;
+    if (gap > 60 && a && /INPUT|TEXTAREA/.test(a.tagName)) {
+      setTimeout(() => { try { a.scrollIntoView({ block: "center", behavior: "smooth" }); } catch(e) {} }, 60);
+    }
+  };
+  vv.addEventListener("resize", lift);
+  vv.addEventListener("scroll", lift);
+  document.addEventListener("focusin", () => setTimeout(lift, 80));
+  document.addEventListener("focusout", () => setTimeout(() => {
+    document.documentElement.style.setProperty("--kb", "0px");
+  }, 80));
+})();
 /* Sync on open so you always start from the latest across devices. */
 if (ghToken()) syncNow(true);
 document.addEventListener("visibilitychange", () => {
