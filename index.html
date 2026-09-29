@@ -266,7 +266,7 @@
   }
   .coachbar {
     position:fixed; left:0; right:0; bottom:var(--kb,0px); padding:10px 14px calc(10px + env(safe-area-inset-bottom));
-    background:linear-gradient(rgba(233,242,250,0), var(--bg) 30%); z-index:5;
+    background:linear-gradient(rgba(233,242,250,0), var(--bg) 30%); z-index:8;
   }
   .coachbar .inner { max-width:960px; margin:0 auto; }
   .coach-reply {
@@ -287,7 +287,7 @@
   .coach-bubble {
     position:fixed; right:14px; bottom:calc(86px + env(safe-area-inset-bottom));
     width:52px; height:52px; border-radius:50%; border:1px solid var(--blue);
-    background:var(--blue); color:#fff; font-size:22px; cursor:pointer; z-index:6;
+    background:var(--blue); color:#fff; font-size:22px; cursor:pointer; z-index:7;
     display:none; align-items:center; justify-content:center;
     box-shadow:0 3px 10px rgba(18,58,90,.28);
   }
@@ -446,6 +446,8 @@
   .pro-bar { height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:6px; }
   .pro-bar>div { height:100%; border-radius:2px; }
   .m-pro { font-family:var(--mono); font-size:11px; color:#0A6C78; margin-top:3px; }
+  .bk-check { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ink); margin-bottom:10px; cursor:pointer; }
+  .bk-check input { width:20px; height:20px; accent-color:var(--cyan); }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -589,7 +591,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v48";
+const APP_VERSION = "v50";
 
 
 const DEFAULT_GOAL = 1900;
@@ -2793,8 +2795,14 @@ function renderCoachBar() {
   const key = localStorage.getItem(LS_KEY);
   const inp = document.getElementById("coach-q");
   const send = document.getElementById("coach-send");
-  if (inp) inp.disabled = !key;
-  if (send) send.disabled = !key;
+  /* Never disable these. A greyed out box with no explanation just looks
+     broken; far better to accept the tap and say what is missing. */
+  if (inp) {
+    inp.disabled = false;
+    inp.placeholder = key ? "Ask Coach Claude, or say what to change\u2026"
+                          : "Add your API key in the Data tab to use this";
+  }
+  if (send) send.disabled = false;
   if (inp && !inp.dataset.wired) {
     inp.dataset.wired = "1";
     inp.addEventListener("keydown", ev => { if (ev.key === "Enter") sendCoachChat(); });
@@ -2857,9 +2865,13 @@ function setCoachBubble(show) {
 async function sendCoachChat() {
   const inp = document.getElementById("coach-q");
   const key = localStorage.getItem(LS_KEY);
-  if (!inp || !key) return;
+  if (!inp) return;
   const q = inp.value.trim();
   if (!q) return;
+  if (!key) {
+    showCoachReply("No API key saved on this device, so I cannot answer. Open the Data tab and paste your key into the Claude API key box, then ask me again.");
+    return;
+  }
   let planChanged = false, failed = false;
   const h = getCoachChat();
   h.push({ role: "user", text: q });
@@ -3759,6 +3771,45 @@ function catchUpPanel() {
 function getSetup() {
   try { return JSON.parse(localStorage.getItem(LS_SETUP)) || null; } catch(e) { return null; }
 }
+/* ===== Settings in the link =====
+   On iOS the only way to update a home-screen app is to delete and re-add it,
+   which takes its storage with it. Carrying the settings in the URL means a
+   re-add restores them automatically, with no sync account needed. */
+function buildSetupLink() {
+  const payload = { s: getSetup(), p: getProfile(), g: getGoal(), u: getUnits() };
+  let enc = "";
+  try { enc = btoa(unescape(encodeURIComponent(JSON.stringify(payload)))).replace(/=+$/,""); } catch(e) { return null; }
+  const base = location.origin + location.pathname;
+  return base + "?cfg=" + enc;
+}
+function applySetupLink() {
+  const m = /[?&]cfg=([^&]+)/.exec(location.search);
+  if (!m) return false;
+  let payload;
+  try { payload = JSON.parse(decodeURIComponent(escape(atob(m[1])))); } catch(e) { return false; }
+  if (!payload) return false;
+  /* Never overwrite settings that already exist on this device. */
+  let applied = false;
+  if (payload.s && !localStorage.getItem(LS_SETUP)) {
+    localStorage.setItem(LS_SETUP, JSON.stringify(payload.s));
+    try { savePlan(generatePlan(payload.s)); } catch(e) {}
+    applied = true;
+  }
+  if (payload.p && !localStorage.getItem(LS_PROFILE)) { localStorage.setItem(LS_PROFILE, JSON.stringify(payload.p)); applied = true; }
+  if (payload.u && !localStorage.getItem(LS_UNITS)) localStorage.setItem(LS_UNITS, payload.u);
+  if (payload.g && !localStorage.getItem(LS_GOAL)) localStorage.setItem(LS_GOAL, String(payload.g));
+  return applied;
+}
+function copySetupLink(btn) {
+  const link = buildSetupLink();
+  if (!link) { showToast(null, {ok:false, text:"Could not build the link."}); return; }
+  const done = () => { btn.textContent = "Copied \u2713"; setTimeout(() => { btn.textContent = "Copy my setup link"; }, 2500); };
+  if (navigator.clipboard) navigator.clipboard.writeText(link).then(done).catch(() => {
+    prompt("Copy this link and add it to your home screen:", link);
+  });
+  else prompt("Copy this link and add it to your home screen:", link);
+}
+
 function needsSetup() {
   if (getSetup()) return false;
   if (localStorage.getItem(LS_PLAN)) return false;
@@ -4496,16 +4547,27 @@ function renderData() {
   if (raw) { try { pretty = JSON.stringify(JSON.parse(raw), null, 2); } catch(e){ pretty = "⚠ Stored data is not valid JSON:\n\n"+raw; } }
 
   v.innerHTML =
+    '<div class="panel-box" style="border-color:var(--cyan)"><div class="t" style="color:#0A6C78">Move to a new phone or new icon</div>' +
+      '<div class="co-sub" style="margin-bottom:10px">One copy, one paste. This carries <b>everything</b>: your food log, workouts, plan, settings, goal and units.</div>' +
+      '<label class="bk-check"><input type="checkbox" id="bk-key" checked> Include my API key (saves re-entering it)</label>' +
+      '<div class="btn-row">' +
+        '<button class="btn primary" onclick="copyEverything(this)" style="font-size:14px;padding:12px 22px">Copy everything</button>' +
+      '</div>' +
+      '<div class="hint" id="bk-status"></div>' +
+      '<div class="su-q" style="font-size:13.5px;margin:14px 0 6px">Restoring on the new icon?</div>' +
+      '<textarea id="import-box" placeholder="Paste your backup here, then tap Restore"></textarea>' +
+      '<div class="btn-row"><button class="btn danger" onclick="restoreEverything(this)">Restore everything</button></div>' +
+      '<div class="hint"><b>On iPhone:</b> tap Copy everything, paste it into Notes, delete the old icon, open the link in Safari, add to Home Screen, then come back here and paste it into the box above. Nothing else to save separately.</div>' +
+    '</div>' +
     '<div class="panel-box"><div class="t">Storage status</div>' +
-      kv("Storage", raw ? "yes — "+raw.length.toLocaleString()+" bytes in this browser" : "empty", raw?"var(--green)":"var(--red)") +
+      kv("Storage", raw ? "yes, "+raw.length.toLocaleString()+" bytes in this browser" : "empty", raw?"var(--green)":"var(--red)") +
       kv("Checked", fmtTime(new Date())) +
       '<div class="btn-row">' +
         '<button class="btn primary" onclick="renderData()">Re-check</button>' +
-        '<button class="btn" onclick="copyBackup(this)">Copy JSON backup</button>' +
         '<button class="btn danger" onclick="eraseAll(this)">Erase all data</button>' +
         '<button class="btn danger" onclick="factoryReset(this)">Reset this device completely</button>' +
       '</div>' +
-      '<div class="hint">Data lives in this browser\u2019s localStorage. It survives closing the tab and restarting the phone, but clearing browser data erases it \u2014 take a JSON backup now and then.</div>' +
+      '<div class="hint">Data lives in this browser\u2019s storage. It survives closing the app and restarting the phone, but deleting the home screen icon or clearing browser data erases it.</div>' +
     '</div>' +
     '<div class="panel-box" style="border-color:#A8CCE5"><div class="t" style="color:#1D6FA8">Sync across devices</div>' +
       '<div class="btn-row" style="margin-top:0">' +
@@ -4554,13 +4616,93 @@ function renderData() {
       '<div class="btn-row"><button class="btn primary" onclick="saveKey()">Save key</button></div>' +
       '<div class="hint"><b>This is a different credential from the sync token above.</b> The Anthropic key starts with <b>sk-ant-</b> and comes from console.anthropic.com; the GitHub token starts with ghp_ or github_pat_. Each device needs its own copy of this key — it is deliberately not synced, so entering it on your computer does not put it on your phone.<br>Without a key, use the offline format: <b>food name = 350</b>, <b>exercise = -300</b>, <b>weight 161</b>, or <b>bf 18</b>.</div>' +
     '</div>' +
-    '<div class="panel-box"><div class="t">Import backup</div>' +
-      '<textarea id="import-box" placeholder="Paste a JSON backup here…"></textarea>' +
-      '<div class="btn-row"><button class="btn danger" onclick="importBackup(this)">Import (overwrites current data)</button></div>' +
-    '</div>' +
     '<div class="panel-box"><div class="t">Raw stored data</div><pre class="raw">'+esc(pretty)+'</pre></div>';
 }
 function kv(l,v,tone){ return '<div class="kv"><span class="l">'+l+'</span><span style="color:'+(tone||"var(--ink)")+'">'+v+'</span></div>'; }
+
+/* ===== One backup to rule them all =====
+   Saving the diary, the setup and the API key separately was three chances
+   to forget one. This is a single blob covering everything the app owns. */
+function everyKey() {
+  return [LS_DIARY, LS_NOTES, LS_PINS, LS_GOAL, LS_UNITS, LS_WORKOUTS, LS_TARGETS,
+          LS_PROFILE, LS_BODYMAP, LS_COACHPLAN, LS_PLAN, LS_HEALTH, LS_SETUP,
+          LS_DELETED, LS_REVIVED, LS_CHAT, LS_COACHCHAT, LS_KEY, LS_GHTOKEN, LS_GISTID,
+          "ledger-open-days", "ledger-coach-open", "ledger-last-reply"];
+}
+function buildFullBackup(includeKey) {
+  const out = { v: APP_VERSION, at: new Date().toISOString(), keys: {} };
+  everyKey().forEach(k => {
+    if (!includeKey && (k === LS_KEY || k === LS_GHTOKEN)) return;
+    const val = localStorage.getItem(k);
+    if (val != null) out.keys[k] = val;
+  });
+  return JSON.stringify(out);
+}
+function copyEverything(btn) {
+  const includeKey = !!(document.getElementById("bk-key") || {}).checked;
+  const blob = buildFullBackup(includeKey);
+  const counts = (function(){
+    let d = 0, sets = 0;
+    try { d = Object.keys(JSON.parse(localStorage.getItem(LS_DIARY) || "{}")).length; } catch(e) {}
+    try {
+      const w = JSON.parse(localStorage.getItem(LS_WORKOUTS) || "{}");
+      sets = Object.values(w).reduce((a,arr) => a + arr.filter(x => x.done).length, 0);
+    } catch(e) {}
+    return d + " days, " + sets + " sets";
+  })();
+  const ok = () => {
+    btn.textContent = "Copied \u2713";
+    setTimeout(() => { btn.textContent = "Copy everything"; }, 3000);
+    const st = document.getElementById("bk-status");
+    if (st) st.textContent = "Copied " + Math.round(blob.length/1024) + " KB covering " + counts +
+      ", your settings" + (includeKey ? ", and your API key" : "") + ". Paste it somewhere safe now.";
+  };
+  if (navigator.clipboard) navigator.clipboard.writeText(blob).then(ok).catch(() => {
+    const box = document.getElementById("import-box");
+    if (box) { box.value = blob; }
+    const st = document.getElementById("bk-status");
+    if (st) st.textContent = "Clipboard blocked. The text is in the box below, select it all and copy manually.";
+  });
+  else {
+    const box = document.getElementById("import-box");
+    if (box) box.value = blob;
+  }
+}
+function restoreEverything(btn) {
+  const box = document.getElementById("import-box");
+  if (!box || !box.value.trim()) { showToast(null, {ok:false, text:"Paste your backup into the box first."}); return; }
+  let parsed;
+  try { parsed = JSON.parse(box.value.trim()); } catch(e) {
+    showToast(null, {ok:false, text:"That does not look like a backup."}); return;
+  }
+  /* Accept both the new full backup and an old diary-only one. */
+  const isFull = parsed && parsed.keys && typeof parsed.keys === "object";
+  if (!isFull && (typeof parsed !== "object" || Array.isArray(parsed))) {
+    showToast(null, {ok:false, text:"That does not look like a backup."}); return;
+  }
+  if (btn.dataset.armed !== "1") {
+    btn.dataset.armed = "1";
+    btn.textContent = "Tap again to replace everything on this device";
+    return;
+  }
+  if (isFull) {
+    Object.keys(parsed.keys).forEach(k => {
+      if (everyKey().indexOf(k) !== -1) localStorage.setItem(k, parsed.keys[k]);
+    });
+  } else {
+    localStorage.setItem(LS_DIARY, JSON.stringify(parsed));
+  }
+  PLAN_CACHE = null;
+  diary = loadDiary();
+  selected = pickDefaultDate();
+  dayConfirmed = false;
+  document.getElementById("goal-label").textContent = getGoal().toLocaleString();
+  render();
+  const st = document.getElementById("bk-status");
+  if (st) st.textContent = "Restored. Everything is back: your log, your plan, your settings" +
+    (parsed.keys && parsed.keys[LS_KEY] ? " and your API key" : "") + ".";
+  showToast(null, {ok:true, text:"Backup restored."});
+}
 
 function copyBackup(btn) {
   const raw = localStorage.getItem(LS_DIARY);
@@ -4864,6 +5006,12 @@ function saveKey() {
 
 /* ============================ tabs ============================ */
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => switchTab(t.dataset.tab));
+function updateBars() {
+  const cb = document.getElementById("coachbar");
+  const fb = document.querySelector(".chatbar");
+  if (cb) cb.style.display = currentTab === "coach" ? "block" : "none";
+  if (fb) fb.style.display = currentTab === "coach" ? "none" : "block";
+}
 function switchTab(name) {
   currentTab = name;
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab===name));
@@ -5138,12 +5286,17 @@ try {
   }
 } catch(e) {}
 
+/* Restore settings carried in the link, for a device that was just re-added. */
+try { applySetupLink(); } catch(e) {}
+
 /* A brand new user starts on setup, not on an empty food diary. */
 try { if (needsSetup()) currentTab = "coach"; } catch(e) {}
 
 /* Give any pre-existing items stable ids before the first merge runs. */
 if (ensureItemIds()) { try { localStorage.setItem(LS_DIARY, JSON.stringify(diary)); } catch(e) {} }
 render();
+updateBars();
+renderCoachBar();
 refreshSyncChip();
 resumeSession();
 
