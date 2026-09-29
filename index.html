@@ -432,6 +432,13 @@
   }
   .su-opt.on { background:var(--cyan); color:#08343A; border-color:var(--cyan); font-weight:700; }
   .co-btn.big { padding:15px 26px; font-size:15px; width:100%; }
+  .not-mine {
+    font-size:13px; color:var(--ink-dim); text-align:center; margin:18px 0 4px;
+  }
+  .nm-btn {
+    background:none; border:none; color:var(--blue); font-weight:700; font-size:13px;
+    text-decoration:underline; cursor:pointer; font-family:inherit; padding:6px;
+  }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -575,7 +582,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v45";
+const APP_VERSION = "v47";
 
 
 const DEFAULT_GOAL = 1900;
@@ -2722,14 +2729,21 @@ function coachContext() {
   const U = getUnits();
   const hUnit = U === "lb" ? "in" : "cm";
   return "UNITS: every weight below is in "+U+", and every weight is a TOTAL (both dumbbells combined, or the whole bar/stack). Give all recommendations in "+U+" total only.\n" +
-    "CLIENT: male, age "+(p.age||"32")+", height "+(p.height||"?")+" "+hUnit+", bodyweight "+(p.weight||(latestWeight()!=null?bodyWeightDisplay(latestWeight()):"?"))+" "+U+". Lives in Arizona (extreme summer heat limits outdoor running).\n" +
+    "CLIENT: age "+(p.age||"?")+", height "+(p.height||"?")+" "+hUnit+", bodyweight "+(p.weight||(latestWeight()!=null?bodyWeightDisplay(latestWeight()):"?"))+" "+U+".\n" +
     "NUTRITION: calorie goal "+getGoal()+" kcal/day"+(avg?"; actually averaging "+avg.consumed+" kcal/day over "+avg.days+" logged days, net "+avg.net:"; no logged days yet")+".\n" +
     "BODY MAP GOALS — grow: "+(Object.keys(bm).filter(k=>bm[k]==="grow").join(", ")||"none marked")+"; trim: "+(Object.keys(bm).filter(k=>bm[k]==="trim").join(", ")||"none marked")+".\n" +
-    "PROGRAM: 4-day split (chest/triceps, back/biceps, legs/core, shoulders/arms), plus 12% incline treadmill walks at 3.0 mph for 20-25 min, and 5K runs 1-2x/month.\n" +
+    "PROGRAM (their current plan): " + getPlan().map(d => d.name + ": " + d.ex.map(e => e.n).join(", ")).join(" | ") + "\n" +
     "LOGGED LIFTS (most recent last): " + (lifts.length ? lifts.join(" | ") : "NONE LOGGED YET") + "\n" +
     "SKIPPED/OWED: " + (owed.length ? owed.join(", ") : "none") + "\n" +
     "RECENT GYM SESSIONS IN LEDGER: " + (recentBurn.slice(-8).join("; ") || "none") + "\n" +
-    "HISTORY: reports poor bicep/tricep/chest growth from light machine work; wants to be lean and proportional; has some waist fat.";
+    (function(){
+      const su = getSetup();
+      if (!su) return "SETUP: not recorded.";
+      return "SETUP: trains " + su.days + " days a week; equipment: " +
+        (su.kit === "full" ? "full gym" : su.kit === "dumbbells" ? "dumbbells only" : "bodyweight only") +
+        "; wants extra work on: " + ((su.focus && su.focus.length) ? su.focus.join(", ") : "nothing in particular") +
+        "; cardio in sessions: " + (su.cardio === false ? "no" : "yes") + ".";
+    })();
 }
 
 /* The coach can edit the plan, so it answers in JSON: prose in `reply`,
@@ -3251,7 +3265,7 @@ const DEFAULT_PLAN = [
     { fig:"pushdown", n:"Close-grip bench press", load:"total", s:"2 × 8–10", c:["Barbell: count the bar plus the plates.","Hands shoulder-width, elbows close to your body."], p:"" },
     { fig:"plank", n:"Hanging knee raise", load:"body", s:"2 × 10–12", c:["Hang from the bar, knees up to your chest.","No swinging. Lower slowly."], p:"" },
     { fig:"plank", n:"Long-lever plank", load:"body", s:"2 × 30–40 sec", c:["Plank with elbows further forward than normal — much harder.","Ribs down, glutes tight, no sagging."], p:"Add 5 sec when 40 feels steady, or walk the elbows further out." },
-    { fig:"treadmill", n:"Incline walk finisher", load:"body", s:"15–20 min · 12% · 3.0", c:["Your favourite, at full length — great low-impact burn for the AZ heat months."], p:"" },
+    { fig:"treadmill", n:"Incline walk finisher", load:"body", s:"15–20 min · 12% · 3.0", c:["Steep incline, brisk walking pace.","Low impact and easy to recover from."], p:"" },
   ]},
 ];
 
@@ -3562,7 +3576,7 @@ const CONDITIONING = [
     c: ["1 push-up, rest 10 sec, 2 push-ups, rest, 3, and so on.","Stop when you cannot finish a rung clean.","Score = highest rung reached."],
     kcal: 90, rest: 0 },
   { n: "Treadmill intervals", fig: "treadmill", load: "body", s: "10-12 min",
-    c: ["30 sec hard, 90 sec easy walk. Repeat 6 times.","Hard means you cannot hold a conversation.","Indoors only in the Phoenix summer."],
+    c: ["30 sec hard, 90 sec easy walk. Repeat 6 times.","Hard means you cannot hold a conversation.","Indoors when it is hot outside."],
     kcal: 150, rest: 0 },
   { n: "Bodyweight circuit", fig: "squat", load: "body", s: "12 min",
     c: ["10 squats, 10 push-ups, 10 lunges each leg, 20 sec plank.","Move straight between them, rest 60 sec at the end of a round.","4 rounds."],
@@ -3747,6 +3761,14 @@ function setupScreen() {
 }
 
 let _setup = { days: 4, focus: [], kit: "full", cardio: true };
+let _forceSetup = false;
+/* Reachable even if the app wrongly believes setup is finished. */
+function openSetup() {
+  const cur = getSetup();
+  if (cur) _setup = { days: cur.days, focus: (cur.focus||[]).slice(), kit: cur.kit, cardio: cur.cardio !== false };
+  _forceSetup = true;
+  if (currentTab !== "coach") switchTab("coach"); else renderCoach();
+}
 document.addEventListener("click", function(e) {
   const el = e.target.closest("[data-su]");
   if (!el) return;
@@ -3766,6 +3788,7 @@ document.addEventListener("click", function(e) {
 });
 
 function finishSetup() {
+  _forceSetup = false;
   const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
   const prof = { age: g("su-age"), height: g("su-height"), weight: g("su-weight"), unit: getUnits() };
   localStorage.setItem(LS_PROFILE, JSON.stringify(prof));
@@ -3784,18 +3807,31 @@ function finishSetup() {
     (_setup.focus.length ? ", extra work on " + _setup.focus.map(f=>GROUP_LABELS[f].toLowerCase()).join(" and ") : "") + "."});
 }
 /* Change your mind later. */
-function reopenSetup() {
-  const cur = getSetup();
-  if (cur) _setup = { days: cur.days, focus: (cur.focus||[]).slice(), kit: cur.kit, cardio: cur.cardio !== false };
-  localStorage.removeItem(LS_SETUP);
-  localStorage.removeItem(LS_PLAN);
-  PLAN_CACHE = null;
-  render();
+function reopenSetup() { openSetup(); }
+
+/* Written for whoever is using the app, from their own setup answers. */
+function genericCoachNotes() {
+  const su = getSetup();
+  const m = (function(){ try { return calorieModel(); } catch(e) { return null; } })();
+  const parts = [];
+  if (su && su.focus && su.focus.length) {
+    parts.push("You asked for extra work on " + su.focus.map(f => (GROUP_LABELS[f]||f).toLowerCase()).join(" and ") +
+      ", so those get more volume across the week.");
+  }
+  parts.push("Every lift here has a progression rule: when you hit the top of the rep range, the weight goes up. " +
+    "Tell the app how hard each set felt and it will push you when you have room and hold you when you do not.");
+  if (m && m.protein) {
+    parts.push("Aim for roughly " + m.protein + " g of protein a day. That is what protects muscle while you are losing fat, " +
+      "and it matters more than the exact calorie number.");
+  }
+  parts.push("You cannot spot reduce fat. Where you lose it is decided by your calorie deficit, not by which exercises you pick. " +
+    "Training decides which muscles grow.");
+  return parts.join(" ");
 }
 
 function renderCoach() {
   const v = document.getElementById("view-coach");
-  if (needsSetup()) { v.innerHTML = setupScreen(); return; }
+  if (needsSetup() || _forceSetup) { v.innerHTML = setupScreen(); return; }
   const p = getProfile();
   const w = latestWeight();
   const key = localStorage.getItem(LS_KEY);
@@ -3826,6 +3862,7 @@ function renderCoach() {
     }).join("") +
 
     /* 2. Everything else, folded away. */
+    '<div class="not-mine">Not your plan? <button class="nm-btn" onclick="openSetup()">Build my own</button></div>' +
     '<div class="co-more">More</div>' +
     conditioningPanel() +
 
@@ -3834,7 +3871,7 @@ function renderCoach() {
 
     '<div class="co-box collapsible" id="cb-read"><div class="t ch" onclick="toggleBox(\'cb-read\')">Coach\u2019s notes <span class="caret">\u25be</span></div>' +
       '<div class="cb-body">' +
-      '<div class="co-plan-out">Your arms and chest aren\u2019t growing for a fixable reason: light machine work without progressive overload, likely alongside a calorie deficit. Every pressing and curling movement here has a progression rule, and arms get hit twice a week. The deficit handles the waist \u2014 no exercise targets it directly. Keep protein high (roughly 130\u2013150 g/day) so the deficit burns fat, not the muscle you\u2019re building.</div>' +
+      '<div class="co-plan-out">' + esc(genericCoachNotes()) + '</div>' +
       (key ? '<div class="btn-row">' +
         '<button class="co-btn" id="co-ai-btn" onclick="askCoach()">'+(savedPlan?"Refresh plan notes":"Generate plan notes")+'</button>' +
         '<button class="co-btn ghost" id="co-tgt-btn" onclick="refreshTargets()">Set target weights</button>' +
@@ -3966,7 +4003,7 @@ async function askCoach() {
     const avg = averages(loggedDates());
     const recentEx = [];
     Object.keys(diary).sort().slice(-14).forEach(d => (diary[d].exercise||[]).forEach(x => recentEx.push(d+": "+x.name+" ("+x.kcal+" kcal)")));
-    const prompt = coachContext() + "\n\nGive a concise personalized assessment and week-plan adjustment in plain text (no markdown): 1) calorie and protein guidance for his recomposition goal, 2) specific set/rep/weight-progression changes emphasizing his marked growth areas — reference his ACTUAL logged weights where available and name the next weight to try, 3) whether his current loading looks sufficient or too light, 4) cardio strategy for Arizona heat, 5) one realistic expectation about timeline. Max ~320 words, direct and specific.";
+    const prompt = coachContext() + "\n\nGive a concise personalised assessment and week-plan adjustment in plain text (no markdown): 1) calorie and protein guidance for their goal, 2) specific set/rep/weight-progression changes emphasising the areas they said they want to work on, referencing their ACTUAL logged weights where available and naming the next weight to try, 3) whether their current loading looks sufficient or too light, 4) a sensible cardio approach, 5) one realistic expectation about timeline. Do not assume their sex, location or training history beyond what is given above. Max ~320 words, direct and specific.";
     const data = await callClaude(key, { model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] });
     const text = (data.content||[]).map(b=>b.type==="text"?b.text:"").filter(Boolean).join("\n");
     localStorage.setItem(LS_COACHPLAN, text);
@@ -4158,6 +4195,15 @@ function rowCtrls(kind, i) {
   '</div>';
 }
 
+function setupBanner() {
+  if (!needsSetup()) return "";
+  return '<div class="co-box" style="border-color:var(--cyan);margin-bottom:14px">' +
+    '<div class="t" style="color:#0A6C78">Welcome. Set up your plan first.</div>' +
+    '<div class="co-sub" style="margin-bottom:10px">Tell the app what you want to work on and it will build a training plan around it. Takes a couple of minutes.</div>' +
+    '<div class="btn-row"><button class="co-btn" onclick="switchTab(\'coach\')">Start setup</button></div>' +
+  '</div>';
+}
+
 function renderLog() {
   const v = document.getElementById("view-log");
   const entry = diary[selected] || { meals: [], exercise: [] };
@@ -4201,6 +4247,7 @@ function renderLog() {
     : "";
 
   v.innerHTML =
+    setupBanner() +
     '<div class="day-head"><span class="day-title">'+fmtDay(selected)+'</span>' +
     '<span class="day-frac">'+consumed.toLocaleString()+' / '+getGoal().toLocaleString()+' kcal</span></div>' +
     '<div class="progress"><div style="width:'+(over?100:pct)+'%;background:var(--'+(over?"amber-dim":"green")+')"></div></div>' +
@@ -4382,6 +4429,7 @@ function renderData() {
         '<button class="btn primary" onclick="renderData()">Re-check</button>' +
         '<button class="btn" onclick="copyBackup(this)">Copy JSON backup</button>' +
         '<button class="btn danger" onclick="eraseAll(this)">Erase all data</button>' +
+        '<button class="btn danger" onclick="factoryReset(this)">Reset this device completely</button>' +
       '</div>' +
       '<div class="hint">Data lives in this browser\u2019s localStorage. It survives closing the tab and restarting the phone, but clearing browser data erases it \u2014 take a JSON backup now and then.</div>' +
     '</div>' +
@@ -4446,6 +4494,24 @@ function copyBackup(btn) {
   navigator.clipboard.writeText(raw).then(()=>{ btn.textContent="Copied ✓"; })
     .catch(()=>{ alert("Clipboard unavailable — copy from the raw data box below."); });
 }
+/* Wipes everything including the plan, profile and setup, for a device that
+   has inherited somebody else's app. */
+function factoryReset(btn) {
+  if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.textContent = "Tap again: wipes EVERYTHING on this device"; return; }
+  [LS_DIARY, LS_NOTES, LS_PINS, LS_GOAL, LS_WORKOUTS, LS_TARGETS, LS_PROFILE, LS_BODYMAP,
+   LS_COACHPLAN, LS_PLAN, LS_HEALTH, LS_SETUP, LS_DELETED, LS_REVIVED, LS_CHAT, LS_COACHCHAT,
+   "ledger-open-days", "ledger-coach-open", "ledger-session", "ledger-homework", "ledger-catchup",
+   "ledger-last-fp", "ledger-last-reply"].forEach(k => localStorage.removeItem(k));
+  PLAN_CACHE = null;
+  diary = {};
+  ensureDay(todayISO());
+  selected = todayISO();
+  _forceSetup = false;
+  currentTab = "coach";
+  switchTab("coach");
+  showToast(null, {ok:true, text:"Device reset. Set up your own plan."});
+}
+
 function eraseAll(btn) {
   if (btn.dataset.armed !== "1") { btn.dataset.armed="1"; btn.textContent="Tap again to erase EVERYTHING"; return; }
   diary = {};
@@ -4989,6 +5055,9 @@ try {
     if (n) { lastPushedFingerprint = ""; }
   }
 } catch(e) {}
+
+/* A brand new user starts on setup, not on an empty food diary. */
+try { if (needsSetup()) currentTab = "coach"; } catch(e) {}
 
 /* Give any pre-existing items stable ids before the first merge runs. */
 if (ensureItemIds()) { try { localStorage.setItem(LS_DIARY, JSON.stringify(diary)); } catch(e) {} }
