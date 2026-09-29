@@ -413,6 +413,25 @@
   .lf.burn label { color:#8A6410; }
   .over-time { color:#8A6410; font-weight:700; }
   .burn-note { font-size:11.5px; color:var(--ink-dim); line-height:1.45; margin-top:6px; flex-basis:100%; }
+  .ef-sel {
+    background:var(--panel); border:1px solid var(--blue-dim); border-radius:8px;
+    color:var(--ink); font-family:var(--sans); font-size:14px; padding:11px 8px; min-height:46px;
+  }
+  .done-eff { font-family:var(--mono); font-size:12px; margin-top:3px; }
+  .done-eff.easy { color:#8A6410; }
+  .done-eff.solid { color:#0A6C78; }
+  .done-eff.max { color:var(--blue); font-weight:700; }
+  .tg-verdict.push { background:var(--cyan); color:#08343A; font-weight:700; }
+  .setup .su-q { font-size:14.5px; font-weight:700; margin:16px 0 8px; color:var(--ink); }
+  .setup .su-q:first-of-type { margin-top:4px; }
+  .su-opts { display:flex; flex-wrap:wrap; gap:8px; }
+  .su-opt {
+    padding:12px 16px; border-radius:999px; cursor:pointer; font-family:var(--sans);
+    font-size:13.5px; font-weight:600; background:var(--panel); color:var(--ink);
+    border:1px solid var(--line); min-height:46px;
+  }
+  .su-opt.on { background:var(--cyan); color:#08343A; border-color:var(--cyan); font-weight:700; }
+  .co-btn.big { padding:15px 26px; font-size:15px; width:100%; }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -556,7 +575,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v42";
+const APP_VERSION = "v45";
 
 
 const DEFAULT_GOAL = 1900;
@@ -575,6 +594,7 @@ const LS_UNITS = "ledger-units";
 const LS_TARGETS = "ledger-targets";
 const LS_PLAN = "ledger-plan";
 const LS_REVIVED = "ledger-revived";
+const LS_SETUP = "ledger-setup";
 const LS_HEALTH = "ledger-health";
 const LS_GHTOKEN = "ledger-gh-token";
 const LS_GISTID  = "ledger-gist-id";
@@ -601,6 +621,7 @@ const SYNC_KEYS = [
   ["plan",    LS_PLAN],
   ["deleted", LS_DELETED],
   ["revived", LS_REVIVED],
+  ["setup",   LS_SETUP],
   ["health",  LS_HEALTH],
 ];
 const GIST_FILE = "daily-ledger.json";
@@ -946,7 +967,7 @@ function mergeIntoLocal(remote) {
 
   /* Single-value settings: newer side wins. */
   [["goal",LS_GOAL],["units",LS_UNITS],["profile",LS_PROFILE],["bodymap",LS_BODYMAP],
-   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN],["plan",LS_PLAN],["health",LS_HEALTH]].forEach(([name,key]) => {
+   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN],["plan",LS_PLAN],["health",LS_HEALTH],["setup",LS_SETUP]].forEach(([name,key]) => {
     if (remoteNewer && typeof remote[name] === "string") localStorage.setItem(key, remote[name]);
   });
   /* Notes: keep the longer text rather than silently dropping writing. */
@@ -1340,7 +1361,31 @@ function isDumbbellLift(name) {
   const ex = getPlan().flatMap(d => d.ex).find(x => x.n === name);
   return isPairLift(ex);
 }
-/* The next rung up, not a fixed number, so progression lands on real kit. */
+/* Step to the NEXT available rung rather than adding a fixed number, which
+   was rounding straight back to the same dumbbell. */
+function stepWeight(ex, currentTotal, dir) {
+  const lb = getUnits() === "lb";
+  const n = parseFloat(currentTotal);
+  if (isNaN(n) || n <= 0) return 0;
+  const ladder = lb ? DUMBBELL_LB : DUMBBELL_KG;
+
+  if (isPairLift(ex)) {
+    const per = n / 2;
+    let i = ladder.findIndex(x => Math.abs(x - per) < 0.01);
+    if (i === -1) { i = ladder.findIndex(x => x > per); if (i === -1) i = ladder.length - 1; }
+    const j = Math.min(Math.max(i + dir, 0), ladder.length - 1);
+    return Math.round(ladder[j] * 2 * 10) / 10;
+  }
+  if (ex && /goblet|overhead triceps/i.test(ex.n)) {
+    let i = ladder.findIndex(x => Math.abs(x - n) < 0.01);
+    if (i === -1) { i = ladder.findIndex(x => x > n); if (i === -1) i = ladder.length - 1; }
+    const j = Math.min(Math.max(i + dir, 0), ladder.length - 1);
+    return ladder[j];
+  }
+  const step = (ex && FINE_MACHINES.test(ex.n)) ? (lb ? 5 : 2.5) : (lb ? 10 : 5);
+  return Math.max(step, snapWeight(n + dir * step, ex));
+}
+
 function increment(name) {
   const ex = getPlan().flatMap(d => d.ex).find(x => x.n === name);
   if (getUnits() === "lb") {
@@ -1374,6 +1419,37 @@ const ALTERNATIVES = {
 };
 
 /* How many recent sessions sat at the same weight without rep progress. */
+/* ===== Effort and consistency =====
+   Without knowing how hard a set felt, the app cannot tell "too light" from
+   "at your limit", so it defaulted to repeating the weight forever and then
+   blamed you for stalling. Effort is now logged with the set. */
+const EFFORT_LABELS = { easy: "Easy", solid: "Solid", max: "All I had" };
+
+/* Average gap between training days, over the last handful of sessions. */
+function sessionDates() {
+  const w = getWorkouts();
+  const set = new Set();
+  Object.keys(w).forEach(n => w[n].forEach(x => { if (x.done) set.add(x.date); }));
+  return Array.from(set).sort();
+}
+function consistency() {
+  const d = sessionDates();
+  if (d.length < 2) return { gap: null, state: "new", label: "Not enough history yet" };
+  const recent = d.slice(-8);
+  let total = 0;
+  for (let i = 1; i < recent.length; i++) total += daysBetween(recent[i-1], recent[i]);
+  const gap = Math.round((total / (recent.length - 1)) * 10) / 10;
+  const since = daysBetween(d[d.length-1], todayISO());
+  if (gap <= 3.5) return { gap, since, state: "strong", label: "Training every " + gap + " days. Consistent." };
+  if (gap <= 5.5) return { gap, since, state: "good", label: "Training every " + gap + " days. Solid." };
+  if (gap <= 8)   return { gap, since, state: "okay", label: "Training every " + gap + " days. A bit spread out." };
+  return { gap, since, state: "patchy", label: "Training every " + gap + " days. Gaps are holding you back more than the programming is." };
+}
+/* What the last few efforts on this lift were. */
+function recentEfforts(ex, n) {
+  return exHistory(ex.n).slice(-(n || 3)).map(x => x.effort || "");
+}
+
 function stallLength(ex) {
   const h = exHistory(ex.n).filter(s => s.weight);
   if (h.length < 2) return 0;
@@ -1544,52 +1620,109 @@ function localTarget(ex) {
     };
   }
 
-  /* Earned the increase. */
+  const efforts = recentEfforts(ex, 3);
+  const lastEffort = last.effort || "";
+  const con = consistency();
+  const sinceLast = daysBetween(last.date, todayISO());
+
+  /* Back after a week or so: match last time before pushing again. */
+  if (sinceLast >= 7 && sinceLast <= 10) {
+    return {
+      weight: snapWeight(shown, ex),
+      reps: (!isNaN(lastReps) ? String(lastReps) : last.reps),
+      sets: last.sets || "",
+      verdict: "MATCH IT",
+      why: sinceLast + " days since you did this. Repeat last session exactly. If it moves easily, go up next time.",
+      change: lastLine + "  =  same again",
+      src: "local",
+    };
+  }
+
+  /* You said it was easy: that is permission to jump, not to repeat. */
+  if (lastEffort === "easy") {
+    const jump = stepWeight(ex, con.state === "strong" ? stepWeight(ex, shown, 1) : shown, 1);
+    return {
+      weight: jump,
+      reps: cap ? String(Math.max(cap - 2, 6)) : last.reps,
+      sets: last.sets || "",
+      verdict: "PUSH UP",
+      why: "You marked last time Easy, so the weight is too light. Jump to " + jump + " " + U + " and see where it bites.",
+      change: lastLine + "  \u2191  " + jump + " " + U,
+      src: "local",
+    };
+  }
+
+  /* Earned the increase by hitting the top of the range. */
   if (cap && !isNaN(lastReps) && lastReps >= cap) {
-    const up = snapWeight(shown + increment(ex.n), ex);
+    const up = stepWeight(ex, shown, 1);
     return {
       weight: up,
-      reps: cap ? String(Math.max(cap - 2, 1)) : last.reps,
+      reps: cap ? String(Math.max(cap - 2, 6)) : last.reps,
       sets: last.sets || "",
       verdict: "GO UP",
       why: "You hit " + lastReps + " reps last time, so add weight.",
-      change: lastLine + "  →  " + up + " " + U,
+      change: lastLine + "  \u2192  " + up + " " + U,
       src: "local",
     };
   }
 
-  /* Stuck at the same load for several sessions — change something. */
+  /* Flat for a few sessions. Why matters. */
   if (stall >= 3) {
+    const maxed = efforts.filter(e => e === "max").length;
+    const unknown = efforts.filter(e => !e).length;
     const alts = ALTERNATIVES[ex.n];
+    if (unknown >= 2) {
+      return {
+        weight: stepWeight(ex, shown, 1),
+        reps: cap ? String(Math.max(cap - 2, 6)) : last.reps,
+        sets: last.sets || "",
+        verdict: "TRY HEAVIER",
+        why: "Three sessions at the same weight and you have not told me how hard they were. Try " +
+             stepWeight(ex, shown, 1) + " " + U + " today and tap Easy, Solid or All I had when you log it.",
+        change: lastLine + "  \u2191  " + stepWeight(ex, shown, 1) + " " + U,
+        src: "local",
+      };
+    }
+    if (maxed >= 2) {
+      return {
+        weight: snapWeight(shown, ex),
+        reps: (!isNaN(lastReps) ? String(lastReps + 1) : last.reps),
+        sets: last.sets || "",
+        verdict: "REAL PLATEAU",
+        why: "You have given it everything three sessions running and it has not moved. That is a genuine plateau, not effort. " +
+             (con.state === "patchy" || con.state === "okay"
+               ? "Training every " + con.gap + " days is the likeliest cause. Tighten that up first."
+               : "Either eat a bit more, or swap the movement for a few weeks.") ,
+        change: lastLine + "  =  hold and chase a rep",
+        alts: alts || null,
+        src: "local",
+      };
+    }
     return {
-      weight: snapWeight(shown, ex),
-      reps: (!isNaN(lastReps) ? String(lastReps + 1) : last.reps),
+      weight: stepWeight(ex, shown, 1),
+      reps: cap ? String(Math.max(cap - 2, 6)) : last.reps,
       sets: last.sets || "",
-      verdict: "STUCK",
-      why: "Same weight " + stall + " sessions running. Either force one extra rep per set, or swap to " +
-           (alts ? alts[0] : "a different variation") + " for a few weeks and come back stronger.",
-      change: lastLine + "  →  same weight, +1 rep",
-      alts: alts || null,
+      verdict: "TIME TO PUSH",
+      why: "Same weight three sessions and you were not maxed out. Add the weight rather than waiting for the reps to come.",
+      change: lastLine + "  \u2191  " + stepWeight(ex, shown, 1) + " " + U,
       src: "local",
     };
   }
 
-  /* Fell well short of the range — the weight is too heavy, drop it. */
-  const floor = (ex.s.match(/(\d+)\s*[–-]\s*\d+/) || [])[1];
+  /* Fell well short of the range: the weight is too heavy. */
+  const floor = (ex.s.match(/(\d+)\s*[\u2013-]\s*\d+/) || [])[1];
   if (floor && !isNaN(lastReps) && lastReps < parseInt(floor, 10) - 1) {
-    const down = snapWeight(Math.max(shown - increment(ex.n), increment(ex.n)), ex);
+    const down = stepWeight(ex, shown, -1);
     return {
       weight: down,
       reps: String(floor),
       sets: last.sets || "",
       verdict: "GO DOWN",
-      why: "You only managed " + lastReps + " reps, below the " + floor + " you're aiming for. Drop the weight and earn it back.",
+      why: "You managed " + lastReps + " reps, below the " + floor + " you are aiming for. Drop the weight and earn it back.",
       change: lastLine + "  \u2193  " + down + " " + U,
-      direction: "down",
       src: "local",
     };
   }
-
   /* Normal case: repeat the weight and beat the reps. */
   return {
     weight: snapWeight(shown, ex),
@@ -2025,6 +2158,7 @@ function logSet(exName, dayName) {
   const mEl = document.getElementById("m-"+id);
   const boEl = document.getElementById("bo-"+id);
   const bwEl = document.getElementById("bw-"+id);
+  const efEl = document.getElementById("ef-"+id);
   const ex = getPlan().flatMap(d => d.ex).find(x => x.n === exName);
   const w = getWorkouts();
   if (!w[exName]) w[exName] = [];
@@ -2040,6 +2174,7 @@ function logSet(exName, dayName) {
     mins: mins,
     burnout: boEl ? boEl.value.trim() : "",
     burnoutWeight: bwEl ? bwEl.value.trim() : "",
+    effort: efEl ? efEl.value : "",
     done: true,
   });
 
@@ -2146,7 +2281,8 @@ function historyBlock(ex) {
       ? (sRec.mins ? sRec.mins + " min" : "\u2014")
       : (sRec.weight ? toDisplayWeight(sRec.weight, setUnitOf(sRec)) + " " + U : "bodyweight") +
         (sRec.sets ? " \u00d7 " + sRec.sets : "") + (sRec.reps ? " \u00d7 " + sRec.reps : "") +
-        (sRec.burnout ? "  + burn " + (sRec.burnoutWeight ? sRec.burnoutWeight + U + " \u00d7 " : "") + sRec.burnout : "");
+        (sRec.burnout ? "  + burn " + (sRec.burnoutWeight ? sRec.burnoutWeight + U + " \u00d7 " : "") + sRec.burnout : "") +
+        (sRec.effort ? "  [" + (EFFORT_LABELS[sRec.effort] || sRec.effort) + "]" : "");
     return '<div class="hl-row"><span class="hl-d">'+fmtShort(sRec.date)+'</span>' +
       '<span class="hl-v">'+esc(detail)+'</span>' +
       '<span class="hl-a '+cls+'">'+dir+'</span></div>';
@@ -2277,8 +2413,8 @@ function exCard(e, dayName) {
     return (half % 5 === 0) ? half : Math.round(half * 10) / 10;
   };
   const tgtLine = tgt
-    ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+(tgt.verdict==="STUCK"?" stuck":"")+(tgt.verdict==="GO DOWN"?" down":"")+'">' +
-      '<div class="tg-head">TODAY <span class="tg-verdict '+(tgt.verdict==="GO UP"?"up":tgt.verdict==="STUCK"?"stuck":tgt.verdict==="GO DOWN"?"down":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
+    ? '<div class="ex-target'+(tgt.src==="coach"?" coach":"")+(/PLATEAU|STUCK/.test(tgt.verdict)?" stuck":"")+(/GO DOWN|EASE BACK/.test(tgt.verdict)?" down":"")+'">' +
+      '<div class="tg-head">TODAY <span class="tg-verdict '+(/GO UP|PUSH UP|TRY HEAVIER|TIME TO PUSH/.test(tgt.verdict)?"up":/PLATEAU|STUCK/.test(tgt.verdict)?"stuck":/GO DOWN|EASE BACK/.test(tgt.verdict)?"down":"same")+'">'+esc(tgt.verdict||"TARGET")+'</span></div>' +
       (tgt.weight === "" ? '<div class="tg-big">'+(tgt.timeTarget ? 'Do <b>'+esc(tgt.timeTarget)+'</b> per set' : 'Bodyweight')+'</div>'
         : '<div class="tg-big">TOTAL: <b>'+tgt.weight+'</b> '+U+'</div>' +
           (pair ? '<div class="tg-hand">= <b>'+perHand(tgt.weight)+' '+U+'</b> in each hand</div>' : '')) +
@@ -2335,6 +2471,7 @@ function exCard(e, dayName) {
           (todaySet.reps ? ' <span class="tg-x">\u00d7</span> <b>'+esc(todaySet.reps)+'</b> reps' : '') +
         '</div>' +
         (todaySet.burnout ? '<div class="done-burn">+ burnout: <b>'+esc(todaySet.burnoutWeight||"")+'</b> '+(todaySet.burnoutWeight?U+' \u00d7 ':'')+'<b>'+esc(todaySet.burnout)+'</b> reps</div>' : '') +
+        (todaySet.effort ? '<div class="done-eff '+esc(todaySet.effort)+'">Effort: '+esc(EFFORT_LABELS[todaySet.effort]||todaySet.effort)+'</div>' : '') +
         '<div class="done-tag">Done today \u2014 nothing more to do here</div>' +
         historyBlock(e) +
         (tgt && tgt.weight !== "" ? '<div class="next-line">Next session aim: <b>'+tgt.weight+' '+U+'</b>' +
@@ -2360,7 +2497,13 @@ function exCard(e, dayName) {
         '<div class="ex-log">' +
           '<div class="lf"><label>minutes</label><input id="m-'+id+'" inputmode="numeric" value="'+esc(preM)+'" oninput="updateBurnHint(this,\''+esc(e.n)+'\')"></div>' +
           '<span class="burn-hint" id="bh-'+id+'">\u2248 '+est+' kcal</span>' +
-          '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
+          '<div class="lf"><label>how hard?</label><select id="ef-'+id+'" class="ef-sel">' +
+          '<option value="">pick one</option>' +
+          '<option value="easy">Easy</option>' +
+          '<option value="solid" selected>Solid</option>' +
+          '<option value="max">All I had</option>' +
+        '</select></div>' +
+        '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
           (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' :
                     '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>') +
         '</div>' +
@@ -2386,6 +2529,12 @@ function exCard(e, dayName) {
           return '<div class="lf burn"><label>burn '+U+'</label><input id="bw-'+id+'" inputmode="decimal" value="'+bo.weight+'"></div>' +
                  '<div class="lf burn"><label>burn reps</label><input id="bo-'+id+'" inputmode="numeric" placeholder="reps" value=""></div>';
         })() +
+        '<div class="lf"><label>how hard?</label><select id="ef-'+id+'" class="ef-sel">' +
+          '<option value="">pick one</option>' +
+          '<option value="easy">Easy</option>' +
+          '<option value="solid" selected>Solid</option>' +
+          '<option value="max">All I had</option>' +
+        '</select></div>' +
         '<button class="co-btn sm" data-ex-log="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">\u2713 Did it</button>' +
         (status ? '<button class="co-btn sm ghost" data-ex-undo="'+esc(e.n)+'">Undo</button>' :
                   '<button class="co-btn sm ghost" data-ex-skip="'+esc(e.n)+'" data-ex-day="'+esc(dayName)+'">Skip</button>') +
@@ -2520,15 +2669,23 @@ function progressionReport() {
   });
   return lines;
 }
+function consistencyLine() {
+  const c = consistency();
+  if (c.state === "new") return "";
+  const tone = c.state === "strong" || c.state === "good" ? "var(--cyan)" : "#8A6410";
+  return '<div class="co-sub" style="color:'+tone+';margin-bottom:8px"><b>Consistency:</b> ' + esc(c.label) +
+    (c.since != null && c.since > 0 ? ' Last session ' + c.since + (c.since === 1 ? " day" : " days") + ' ago.' : '') + '</div>';
+}
+
 function progressionInner() {
   const rows = progressionReport();
   const w = getWorkouts();
   const totalSets = Object.values(w).reduce((s,arr)=>s+arr.filter(x=>x.done).length,0);
-  if (!totalSets) return '<div class="co-sub">Nothing logged yet. Enter weight and reps on a card and tap <b>Did it</b>. After two sessions per lift the trend shows up here.</div>';
+  if (!totalSets) return consistencyLine() + '<div class="co-sub">Nothing logged yet. Enter weight and reps on a card and tap <b>Did it</b>. After two sessions per lift the trend shows up here.</div>';
   const stalled = rows.filter(r => r.dw <= 0 && r.span >= 3);
   const gaining = rows.filter(r => r.dw > 0);
   const U = getUnits();
-  return '<div class="co-sub" style="margin-bottom:8px">'+totalSets+' sets logged</div>' +
+  return consistencyLine() + '<div class="co-sub" style="margin-bottom:8px">'+totalSets+' sets logged</div>' +
     (gaining.length ? '<div class="co-sub" style="color:var(--blue)">\u25b2 Moving up: ' +
       gaining.map(r=>esc(r.name)+" "+r.from+"\u2192"+r.to+" "+U).join(" \u00b7 ") + '</div>' : '') +
     (stalled.length ? '<div class="co-sub" style="color:#8A6410;margin-top:6px">\u25a0 Stalled: ' +
@@ -2585,6 +2742,8 @@ function COACH_SYSTEM() {
     "hasn't moved in weeks, say so plainly and give the exact next weight to try. Never give medical advice; " +
     "suggest a professional for pain or injury.\n\n" +
     "YOU CAN EDIT THE PLAN. If the client can't do an exercise (no equipment, injury, dislike), or asks for " +
+    "more or less work on a body part, change the plan yourself using planEdits. To shift emphasis, ADD movements for the " +
+    "area they want and REMOVE ones from areas they care less about, so sessions stay 45 to 60 minutes. " +
     "something different, harder, or extra — change the plan yourself using planEdits. Don't just suggest it in words. " +
     "Match the muscle group when swapping, and pick a substitute that needs different equipment from the one being replaced.\n\n" +
     "CURRENT PLAN:\n" + plan + "\n\n" +
@@ -2910,6 +3069,154 @@ function exSvg(kind) {
 
 /* Default 4-day plan targeting Patrick's stated goals: arm/chest size,
    waist trim (via deficit), keep his incline-walk cardio. */
+/* ===================== PLAN BUILDER =====================
+   Exercises tagged by muscle group and by the kit they need, so a plan can be
+   generated for whoever is using the app rather than hardcoded to one person. */
+const EX_LIBRARY = [
+  /* chest */
+  { n:"Dumbbell bench press", g:"chest", fig:"bench", load:"total", pair:1, kit:"dumbbells", s:"4 \u00d7 8\u201310",
+    c:["Lie flat, one dumbbell in each hand.","Lower to chest slowly, press up hard."] },
+  { n:"Incline dumbbell press", g:"chest", fig:"press", load:"total", pair:1, kit:"dumbbells", s:"3 \u00d7 8\u201310",
+    c:["Bench at about 30 degrees.","Press up and slightly in."] },
+  { n:"Push-ups", g:"chest", fig:"plank", load:"body", kit:"none", s:"3 \u00d7 10\u201320",
+    c:["Hands under shoulders, body in a straight line.","Chest to the floor, full lockout."] },
+  { n:"Chest fly (squeeze machine)", g:"chest", fig:"fly", load:"total", kit:"machines", s:"3 \u00d7 12",
+    c:["Machine weight, read the stack.","Squeeze and hold 1 second in the middle."] },
+  /* back */
+  { n:"Lat pulldown", g:"back", fig:"pulldown", load:"total", kit:"machines", s:"4 \u00d7 8\u201310",
+    c:["Machine stack weight.","Pull to your upper chest, elbows down and back."] },
+  { n:"Seated cable row", g:"back", fig:"row", load:"total", kit:"machines", s:"3 \u00d7 10",
+    c:["Cable stack weight.","Chest tall, squeeze your shoulder blades together."] },
+  { n:"Dumbbell row", g:"back", fig:"row", load:"total", pair:1, kit:"dumbbells", s:"3 \u00d7 10",
+    c:["One hand and knee on a bench, row the dumbbell to your hip.","Do not twist your torso."] },
+  { n:"Face pulls", g:"back", fig:"row", load:"total", kit:"machines", s:"3 \u00d7 15",
+    c:["Rope at head height.","Pull to your face, elbows high. Light weight."] },
+  { n:"Superman holds", g:"back", fig:"plank", load:"body", kit:"none", s:"3 \u00d7 30 sec",
+    c:["Face down, lift chest and legs off the floor.","Squeeze your glutes."] },
+  /* legs */
+  { n:"Goblet squat", g:"legs", fig:"squat", load:"total", kit:"dumbbells", s:"4 \u00d7 10",
+    c:["ONE dumbbell held at your chest with both hands.","Sit straight down between your heels."] },
+  { n:"Romanian deadlift", g:"legs", fig:"squat", load:"total", pair:1, kit:"dumbbells", s:"3 \u00d7 10",
+    c:["One dumbbell in each hand.","Push your hips back, knees soft."] },
+  { n:"Bodyweight squats", g:"legs", fig:"squat", load:"body", kit:"none", s:"3 \u00d7 20",
+    c:["Feet shoulder width, sit down and back.","Chest up the whole way."] },
+  { n:"Walking lunges", g:"legs", fig:"squat", load:"body", kit:"none", s:"3 \u00d7 12 each leg",
+    c:["Long step, back knee towards the floor.","Stay upright."] },
+  { n:"Leg press", g:"legs", fig:"squat", load:"total", kit:"machines", s:"4 \u00d7 10",
+    c:["Feet mid platform, shoulder width.","Do not lock the knees at the top."] },
+  /* shoulders */
+  { n:"Dumbbell shoulder press", g:"shoulders", fig:"press", load:"total", pair:1, kit:"dumbbells", s:"4 \u00d7 8\u201310",
+    c:["One dumbbell in each hand at shoulder height.","Press straight overhead, do not arch your back."] },
+  { n:"Lateral raises", g:"shoulders", fig:"fly", load:"total", pair:1, kit:"dumbbells", s:"3 \u00d7 12\u201315",
+    c:["Arms out to the side, stop at shoulder height.","Light weight, these are not meant to be heavy."] },
+  { n:"Pike push-ups", g:"shoulders", fig:"press", load:"body", kit:"none", s:"3 \u00d7 10",
+    c:["Hips high, head towards the floor between your hands."] },
+  /* arms */
+  { n:"Dumbbell curls", g:"arms", fig:"curl", load:"total", pair:1, kit:"dumbbells", s:"3 \u00d7 8\u201310",
+    c:["One dumbbell in each hand, palms up.","No swinging, elbows still."] },
+  { n:"Hammer curls", g:"arms", fig:"curl", load:"total", pair:1, kit:"dumbbells", s:"3 \u00d7 10\u201312",
+    c:["Palms facing IN, thumbs up.","Elbows tucked."] },
+  { n:"Triceps rope pushdown", g:"arms", fig:"pushdown", load:"total", kit:"machines", s:"3 \u00d7 10\u201312",
+    c:["Cable stack weight.","Elbows pinned to your sides."] },
+  { n:"Overhead triceps extension", g:"arms", fig:"press", load:"total", kit:"dumbbells", s:"3 \u00d7 10\u201312",
+    c:["One dumbbell held with both hands overhead.","Lower behind your head for a full stretch."] },
+  { n:"Chair dips", g:"arms", fig:"pushdown", load:"body", kit:"none", s:"3 \u00d7 12",
+    c:["Hands on a chair edge behind you.","Lower until your elbows reach 90 degrees."] },
+  /* core */
+  { n:"Plank", g:"core", fig:"plank", load:"body", kit:"none", s:"3 \u00d7 45\u201360 sec",
+    c:["Forearms and toes on the floor.","Squeeze your glutes, do not let your hips sag."] },
+  { n:"Side plank", g:"core", fig:"plank", load:"body", kit:"none", s:"2 \u00d7 30 sec each side",
+    c:["On one forearm, body in a straight line.","Hips lifted."] },
+  { n:"Dead bug", g:"core", fig:"plank", load:"body", kit:"none", s:"2 \u00d7 8 each side",
+    c:["On your back, opposite arm and leg reach away slowly.","Lower back stays pressed down."] },
+  { n:"Hanging knee raise", g:"core", fig:"plank", load:"body", kit:"machines", s:"2 \u00d7 10\u201312",
+    c:["Hang from the bar, knees to your chest.","No swinging, lower slowly."] },
+  /* cardio */
+  { n:"Incline walk", g:"cardio", fig:"treadmill", load:"body", kit:"machines", s:"15\u201320 min",
+    c:["Treadmill at a steep incline, brisk walking pace.","Low impact, easy to recover from."] },
+  { n:"Easy run", g:"cardio", fig:"run", load:"body", kit:"none", s:"10\u201320 min",
+    c:["Conversational pace.","Indoors when it is hot."] },
+  { n:"Treadmill intervals", g:"cardio", fig:"treadmill", load:"body", kit:"machines", s:"10\u201312 min",
+    c:["30 sec hard, 90 sec easy. Repeat 6 times.","Hard means you cannot hold a conversation."] },
+];
+
+const GROUP_LABELS = {
+  chest:"Chest", back:"Back", legs:"Legs", shoulders:"Shoulders", arms:"Arms", core:"Core", cardio:"Cardio",
+};
+
+/* Which groups each day of a split covers. */
+const SPLITS = {
+  2: [ { name:"Upper body", g:["chest","back","shoulders","arms"] },
+       { name:"Lower body & core", g:["legs","core"] } ],
+  3: [ { name:"Push", g:["chest","shoulders","arms"] },
+       { name:"Pull", g:["back","arms"] },
+       { name:"Legs & core", g:["legs","core"] } ],
+  4: [ { name:"Chest & triceps", g:["chest","arms"] },
+       { name:"Back & biceps", g:["back","arms"] },
+       { name:"Legs & core", g:["legs","core"] },
+       { name:"Shoulders & arms", g:["shoulders","arms"] } ],
+  5: [ { name:"Chest", g:["chest","core"] },
+       { name:"Back", g:["back"] },
+       { name:"Legs", g:["legs"] },
+       { name:"Shoulders", g:["shoulders","core"] },
+       { name:"Arms", g:["arms"] } ],
+};
+
+function kitAllowed(ex, kit) {
+  if (ex.kit === "none") return true;
+  if (ex.kit === "dumbbells") return kit === "dumbbells" || kit === "full";
+  if (ex.kit === "machines") return kit === "full";
+  return true;
+}
+
+/* Build a plan from the answers given at setup. */
+function generatePlan(opts) {
+  const days = SPLITS[opts.days] || SPLITS[4];
+  const focus = opts.focus || [];
+  const kit = opts.kit || "full";
+  const wantsCardio = opts.cardio !== false;
+
+  return days.map((d, i) => {
+    const picks = [];
+    const used = new Set();
+    /* Days that cover several muscle groups get fewer movements each, so a
+       two-day Upper session does not run to 75 minutes. */
+    const capFor = d.g.length >= 4 ? 5 : (d.g.length >= 3 ? 4 : 6);
+    const perGroup = d.g.length >= 3 ? 2 : 3;
+    d.g.forEach(g => {
+      const pool = EX_LIBRARY.filter(e => e.g === g && kitAllowed(e, kit));
+      const want = focus.indexOf(g) !== -1 ? perGroup : Math.max(1, perGroup - 1);
+      pool.slice(0, want).forEach(e => {
+        if (picks.length >= capFor) return;          // hard cap, per exercise
+        if (used.has(e.n)) return;
+        used.add(e.n); picks.push(e);
+      });
+    });
+    /* Everyone gets some core, even when it is not a focus. */
+    if (d.g.indexOf("core") === -1 && picks.length < capFor) {
+      const core = EX_LIBRARY.filter(e => e.g === "core" && kitAllowed(e, kit));
+      const c = core[i % core.length];
+      if (c && !used.has(c.n)) { used.add(c.n); picks.push(c); }
+    }
+    if (wantsCardio) {
+      /* Keep room for the cardio finisher so sessions stay inside an hour. */
+      while (picks.length > capFor - 1) picks.pop();
+      const cardio = EX_LIBRARY.filter(e => e.g === "cardio" && kitAllowed(e, kit));
+      const c = cardio[i % cardio.length];
+      if (c) picks.push(Object.assign({}, c, { s: i === 0 ? "10\u201315 min" : c.s }));
+    }
+    const ex = picks.map(e => ({
+      fig: e.fig, n: e.n, load: e.load, pair: e.pair, s: e.s, c: e.c.slice(), p: "",
+    }));
+    return {
+      name: "Day " + (i+1) + " \u2014 " + d.name,
+      burn: 250 + (wantsCardio ? 60 : 0),
+      meta: "",
+      ex: ex,
+    };
+  });
+}
+
 const DEFAULT_PLAN = [
   { name: "Day 1 — Chest & Triceps", burn: 300, meta: "~50 min + incline walk", ex: [
     { fig:"treadmill", n:"Incline walk warm-up", load:"body", s:"5–8 min · 12% · 3.0 mph", c:["Set incline 12%, speed 3.0.","Warm-up only — don't tire yourself out."], p:"" },
@@ -3381,8 +3688,114 @@ function catchUpPanel() {
   '</div>';
 }
 
+/* ===== First run setup =====
+   Anyone opening this app for the first time gets asked what they want,
+   rather than inheriting somebody else's training split. */
+function getSetup() {
+  try { return JSON.parse(localStorage.getItem(LS_SETUP)) || null; } catch(e) { return null; }
+}
+function needsSetup() {
+  if (getSetup()) return false;
+  if (localStorage.getItem(LS_PLAN)) return false;
+  /* An existing user with history is not a new user. */
+  const w = getWorkouts();
+  const logged = Object.values(w).some(a => a.some(x => x.done));
+  return !logged;
+}
+function setupScreen() {
+  const p = getProfile();
+  return '<div class="co-box setup"><div class="t">Set up your plan</div>' +
+    '<div class="co-sub" style="margin-bottom:14px">Two minutes, then you get a plan built around what you actually want. You can change any of it later.</div>' +
+
+    '<div class="su-q">How many days a week can you train?</div>' +
+    '<div class="su-opts" id="su-days">' +
+      [2,3,4,5].map(n => '<button class="su-opt'+(n===4?" on":"")+'" data-su="days" data-v="'+n+'">'+n+' days</button>').join("") +
+    '</div>' +
+
+    '<div class="su-q">What do you most want to work on? Pick any.</div>' +
+    '<div class="su-opts" id="su-focus">' +
+      ["chest","back","legs","shoulders","arms","core"].map(g =>
+        '<button class="su-opt" data-su="focus" data-v="'+g+'">'+GROUP_LABELS[g]+'</button>').join("") +
+    '</div>' +
+
+    '<div class="su-q">What equipment do you have?</div>' +
+    '<div class="su-opts" id="su-kit">' +
+      '<button class="su-opt on" data-su="kit" data-v="full">Full gym</button>' +
+      '<button class="su-opt" data-su="kit" data-v="dumbbells">Dumbbells only</button>' +
+      '<button class="su-opt" data-su="kit" data-v="none">Bodyweight only</button>' +
+    '</div>' +
+
+    '<div class="su-q">Include cardio in each session?</div>' +
+    '<div class="su-opts" id="su-cardio">' +
+      '<button class="su-opt on" data-su="cardio" data-v="yes">Yes</button>' +
+      '<button class="su-opt" data-su="cardio" data-v="no">No, weights only</button>' +
+    '</div>' +
+
+    '<div class="su-q">A few details, so weights and calories are sensible</div>' +
+    '<div class="co-form">' +
+      '<div class="f"><label>Age</label><input id="su-age" inputmode="numeric" value="'+esc(p.age||"")+'"></div>' +
+      '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="su-height" inputmode="numeric" value="'+esc(p.height||"")+'"></div>' +
+      '<div class="f"><label>Weight '+getUnits()+'</label><input id="su-weight" inputmode="decimal" value="'+esc(p.weight||"")+'"></div>' +
+    '</div>' +
+    '<div class="unit-toggle" style="margin-top:10px"><span class="unit-label">Units</span>' +
+      '<button class="unit-btn'+(getUnits()==="lb"?" on":"")+'" onclick="setUnits(\'lb\')">lb</button>' +
+      '<button class="unit-btn'+(getUnits()==="kg"?" on":"")+'" onclick="setUnits(\'kg\')">kg</button></div>' +
+
+    '<div class="btn-row" style="margin-top:16px"><button class="co-btn big" onclick="finishSetup()">Build my plan</button></div>' +
+    '<div class="co-sub" style="margin-top:10px">Nothing you log here is shared with anyone else. Your data stays on your own device.</div>' +
+  '</div>';
+}
+
+let _setup = { days: 4, focus: [], kit: "full", cardio: true };
+document.addEventListener("click", function(e) {
+  const el = e.target.closest("[data-su]");
+  if (!el) return;
+  const k = el.dataset.su, v = el.dataset.v;
+  if (k === "focus") {
+    const i = _setup.focus.indexOf(v);
+    if (i === -1) _setup.focus.push(v); else _setup.focus.splice(i,1);
+    el.classList.toggle("on");
+    return;
+  }
+  if (k === "days") _setup.days = parseInt(v,10);
+  if (k === "kit") _setup.kit = v;
+  if (k === "cardio") _setup.cardio = (v === "yes");
+  const wrap = el.parentNode;
+  Array.prototype.forEach.call(wrap.children, c => c.classList.remove("on"));
+  el.classList.add("on");
+});
+
+function finishSetup() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
+  const prof = { age: g("su-age"), height: g("su-height"), weight: g("su-weight"), unit: getUnits() };
+  localStorage.setItem(LS_PROFILE, JSON.stringify(prof));
+  const opts = { days: _setup.days, focus: _setup.focus.slice(), kit: _setup.kit, cardio: _setup.cardio };
+  localStorage.setItem(LS_SETUP, JSON.stringify(opts));
+  try { savePlan(generatePlan(opts)); } catch(e) {}
+  /* Set a starting calorie goal from the numbers just given. */
+  try {
+    const m = calorieModel();
+    if (m && m.lean) localStorage.setItem(LS_GOAL, String(m.lean));
+    const gl = document.getElementById("goal-label");
+    if (gl) gl.textContent = getGoal().toLocaleString();
+  } catch(e) {}
+  render();
+  showToast(null, {ok:true, text:"Plan built. " + _setup.days + " days a week" +
+    (_setup.focus.length ? ", extra work on " + _setup.focus.map(f=>GROUP_LABELS[f].toLowerCase()).join(" and ") : "") + "."});
+}
+/* Change your mind later. */
+function reopenSetup() {
+  const cur = getSetup();
+  if (cur) _setup = { days: cur.days, focus: (cur.focus||[]).slice(), kit: cur.kit, cardio: cur.cardio !== false };
+  localStorage.removeItem(LS_SETUP);
+  localStorage.removeItem(LS_PLAN);
+  PLAN_CACHE = null;
+  render();
+}
+
 function renderCoach() {
   const v = document.getElementById("view-coach");
+  if (needsSetup()) { v.innerHTML = setupScreen(); return; }
   const p = getProfile();
   const w = latestWeight();
   const key = localStorage.getItem(LS_KEY);
@@ -3452,7 +3865,8 @@ function renderCoach() {
         '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="co-height" inputmode="numeric" value="'+esc(p.height||"")+'" placeholder="'+(getUnits()==="lb"?"69":"175")+'"></div>' +
         '<div class="f"><label>Weight '+getUnits()+'</label><input id="co-weight" inputmode="decimal" value="'+esc(p.weight || (w!=null?String(bodyWeightDisplay(w)):""))+'" placeholder="'+(getUnits()==="lb"?"161":"73")+'"></div>' +
       '</div>' +
-      '<div class="btn-row"><button class="co-btn" onclick="saveCoachProfile()">Save</button></div>' +
+      '<div class="btn-row"><button class="co-btn" onclick="saveCoachProfile()">Save</button>' +
+        '<button class="co-btn ghost" onclick="reopenSetup()">Rebuild my plan</button></div>' +
       (avg ? '<div class="co-sub" style="margin-top:10px">Averaging '+avg.consumed.toLocaleString()+' kcal/day over '+avg.days+' logged days \u00b7 goal '+getGoal().toLocaleString()+'.</div>' : '') +
       '</div></div>' +
 
@@ -4527,7 +4941,16 @@ ${JSON.stringify(diary, null, 1)}
 
 The user typed: "${userText}"
 
-Interpret this as diary updates. Estimate calories realistically (typical restaurant/label values, sensible rounding). Resolve relative days like "yesterday" against today's date. If a calorie count is label-confirmed, use it exactly with note "Label-confirmed". For corrections/removals, use removeIndexes (meals) or removeExerciseIndexes (exercise) on the matching array index for that date. The user enters bodyweight in ${getUnits()} — the weightKg field MUST be in kilograms, so convert if they are using pounds (divide by 2.20462). Body fat is %. If the message isn't loggable, return empty updates and answer briefly in "reply".
+Interpret this as diary updates. Estimate calories realistically (typical restaurant/label values, sensible rounding).
+
+HOME COOKING: people describe ingredients, not the fat they cooked them in, and that fat is usually 100-250 kcal a meal. When something is clearly homemade, add what a normal health-conscious home cook would actually use, even if it was not mentioned:
+- Pan-fried, sauteed, stir-fried: 1 to 2 tbsp oil or butter (120-240 kcal), split across the portions being cooked.
+- Roasted or baked vegetables, potatoes, chicken pieces: about 1 tbsp oil (120 kcal).
+- Eggs: assume a knob of butter or a splash of oil unless they say dry or non-stick.
+- Salad: assume 1 to 2 tbsp dressing (100-180 kcal) unless they say undressed or lemon only.
+- Pasta, rice, grains: assume a little oil, butter or sauce unless they say plain.
+- Grilled, air-fried, steamed, poached, boiled, or "dry": add little or nothing.
+Be a sensible cook, not a pessimist or a purist: do not assume a restaurant drowning things in butter, and do not assume zero-fat cooking. Fold the cooking fat into the item's calories and say so in the name, for example "Chicken stir-fry, homemade (incl. ~1 tbsp oil)", so the assumption is visible and can be corrected. If they name the exact oil or amount, use theirs instead. If they say it was a packaged, restaurant or takeaway meal, do not add cooking fat because it is already in the figure. If the cooking method genuinely changes the number a lot and you cannot tell, ask a clarifying question. Resolve relative days like "yesterday" against today's date. If a calorie count is label-confirmed, use it exactly with note "Label-confirmed". For corrections/removals, use removeIndexes (meals) or removeExerciseIndexes (exercise) on the matching array index for that date. The user enters bodyweight in ${getUnits()} — the weightKg field MUST be in kilograms, so convert if they are using pounds (divide by 2.20462). Body fat is %. If the message isn't loggable, return empty updates and answer briefly in "reply".
 
 EXERCISE: if the user describes physical activity (a run, gym session, cycling, a long walk, sport, etc.), log it in addExercise with kcal = estimated calories BURNED (positive number). Estimate from activity, duration/distance, and intensity for an adult weighing ${latestWeight() != null ? latestWeight() : 73} kg; if duration or intensity is missing and it changes the estimate meaningfully, ask a clarifying question instead. Exercise reduces the day's net calories in the app automatically — never log it as a negative meal.
 
