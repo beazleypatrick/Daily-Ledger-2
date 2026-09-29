@@ -8,6 +8,9 @@
 <meta name="apple-mobile-web-app-title" content="Fitness Tracker">
 <meta name="theme-color" content="#E9F2FA">
 <title>Fitness Tracker</title>
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAACa0lEQVR42u3dsQ3CQBQFwWuEWiiJUmiDPmiEnJgYRExkybaO9Zy0Dbw/oSWPMek7XW5vzd3wgAUeYAEOssAGWWCDrCRsh1EGtmMogdoBlIFtdGVQG1sZ1EZWBrVxlUFtVGVQG1MZ1EZUCrUBlQFtPGVQG00p1AZTBrSxlEJtKGVAG0kp1AZSBrRxlEJtGGVAG0Up1AYR0BLQ0sagjaEUakMIaAloCWgJaAEtAS1NBdoIAloCWgJaAlpAS0BLQEtAS0ALaAloCWgJaAloAS0BLQEtAS0BLaAloCWgf1vjOfDx9gUaaKANDjTQBrcv0EDbF2iggTY40EAbHGiggbYv0EDbdzbQ18dzUUDPD3rpTYEGGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYaaKAF9F+Dft3PWhjQQAMNNNBAAw000EALaKCBBhpooIEGGmiggQYaaAENNNBAAw000EADDTTQQAMtoH0P7XtooIEGGmiggQYaaKCBFtBAAw000EADDTTQQAMNNNACGmiggQYaaKCBBtqfZIG2L9BAA21woIE2uH2BBtq+QANtX6CBBtrgQANtcPsCDbR9O6AloAW0EQS0BLQEtAS0gJaAloCWgJaAFtAS0BLQEtAS0AJaAloCWgJaAlrHAP19hhDQEtAS0BLQAloCWgJa2hI01EphBlpAS0BLO4GGWinMQCsHGmqlMAOtHGiolcIMtHKgoVYKM9DKgYZaKcxQK4cZaOVAQ60UZqiVwwy1cpihVg4z1Mphhlo5zFArhxls5SBDrSRmsJWDDLaSkMFWEjLYSkIGHOA93wey+Tk2CYuwegAAAABJRU5ErkJggg==">
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAACa0lEQVR42u3dsQ3CQBQFwWuEWiiJUmiDPmiEnJgYRExkybaO9Zy0Dbw/oSWPMek7XW5vzd3wgAUeYAEOssAGWWCDrCRsh1EGtmMogdoBlIFtdGVQG1sZ1EZWBrVxlUFtVGVQG1MZ1EZUCrUBlQFtPGVQG00p1AZTBrSxlEJtKGVAG0kp1AZSBrRxlEJtGGVAG0Up1AYR0BLQ0sagjaEUakMIaAloCWgJaAEtAS1NBdoIAloCWgJaAlpAS0BLQEtAS0ALaAloCWgJaAloAS0BLQEtAS0BLaAloCWgf1vjOfDx9gUaaKANDjTQBrcv0EDbF2iggTY40EAbHGiggbYv0EDbdzbQ18dzUUDPD3rpTYEGGmiggQYaaKCBBhpooIEGGmiggQYaaKCBBhpooIEGGmiggQYaaKAF9F+Dft3PWhjQQAMNNNBAAw000EALaKCBBhpooIEGGmiggQYaaAENNNBAAw000EADDTTQQAMtoH0P7XtooIEGGmiggQYaaKCBFtBAAw000EADDTTQQAMNNNACGmiggQYaaKCBBtqfZIG2L9BAA21woIE2uH2BBtq+QANtX6CBBtrgQANtcPsCDbR9O6AloAW0EQS0BLQEtAS0gJaAloCWgJaAFtAS0BLQEtAS0AJaAloCWgJaAlrHAP19hhDQEtAS0BLQAloCWgJa2hI01EphBlpAS0BLO4GGWinMQCsHGmqlMAOtHGiolcIMtHKgoVYKM9DKgYZaKcxQK4cZaOVAQ60UZqiVwwy1cpihVg4z1Mphhlo5zFArhxls5SBDrSRmsJWDDLaSkMFWEjLYSkIGHOA93wey+Tk2CYuwegAAAABJRU5ErkJggg==">
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Nunito:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -439,6 +442,10 @@
     background:none; border:none; color:var(--blue); font-weight:700; font-size:13px;
     text-decoration:underline; cursor:pointer; font-family:inherit; padding:6px;
   }
+  .pro-t { font-size:12px; color:var(--ink-dim); font-weight:400; }
+  .pro-bar { height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:6px; }
+  .pro-bar>div { height:100%; border-radius:2px; }
+  .m-pro { font-family:var(--mono); font-size:11px; color:#0A6C78; margin-top:3px; }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -582,7 +589,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v47";
+const APP_VERSION = "v48";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1838,6 +1845,12 @@ function ensureDay(d) {
   return diary[d];
 }
 function dayTotal(d) { return (diary[d] ? diary[d].meals : []).reduce((s,m)=>s+(m.kcal||0),0); }
+function dayProtein(d) {
+  return ((diary[d] && diary[d].meals) ? diary[d].meals : []).reduce((s2,m) => s2 + (m.protein || 0), 0);
+}
+function proteinTarget() {
+  try { const m = calorieModel(); return m && m.protein ? m.protein : null; } catch(e) { return null; }
+}
 function dayBurn(d) { return ((diary[d] && diary[d].exercise) ? diary[d].exercise : []).reduce((s,m)=>s+(m.kcal||0),0); }
 function dayNet(d) { return dayTotal(d) - dayBurn(d); }
 
@@ -2729,7 +2742,7 @@ function coachContext() {
   const U = getUnits();
   const hUnit = U === "lb" ? "in" : "cm";
   return "UNITS: every weight below is in "+U+", and every weight is a TOTAL (both dumbbells combined, or the whole bar/stack). Give all recommendations in "+U+" total only.\n" +
-    "CLIENT: age "+(p.age||"?")+", height "+(p.height||"?")+" "+hUnit+", bodyweight "+(p.weight||(latestWeight()!=null?bodyWeightDisplay(latestWeight()):"?"))+" "+U+".\n" +
+    "CLIENT: "+(p.sex === "female" ? "female" : p.sex === "male" ? "male" : "sex not given")+", age "+(p.age||"?")+", height "+(p.height||"?")+" "+hUnit+", bodyweight "+(p.weight||(latestWeight()!=null?bodyWeightDisplay(latestWeight()):"?"))+" "+U+".\n" +
     "NUTRITION: calorie goal "+getGoal()+" kcal/day"+(avg?"; actually averaging "+avg.consumed+" kcal/day over "+avg.days+" logged days, net "+avg.net:"; no logged days yet")+".\n" +
     "BODY MAP GOALS — grow: "+(Object.keys(bm).filter(k=>bm[k]==="grow").join(", ")||"none marked")+"; trim: "+(Object.keys(bm).filter(k=>bm[k]==="trim").join(", ")||"none marked")+".\n" +
     "PROGRAM (their current plan): " + getPlan().map(d => d.name + ": " + d.ex.map(e => e.n).join(", ")).join(" | ") + "\n" +
@@ -2880,8 +2893,18 @@ async function sendCoachChat() {
     let applied = [];
     if (edits.length) {
       applied = applyPlanEdits(edits);
-      if (applied.length) planChanged = true;
-      if (applied.length) text += "\n\n\u2713 " + applied.join("\n\u2713 ");
+      if (applied.length && String(applied[0]).indexOf("__MISS__") === 0) {
+        text += "\n\n\u26a0 I did not change the plan: " + applied[0].replace("__MISS__","") +
+                ". Try naming the day exactly as it appears on the card.";
+        applied = [];
+      } else if (applied.length) {
+        planChanged = true;
+        text += "\n\n\u2713 " + applied.join("\n\u2713 ");
+      }
+    } else if (/\b(swap|replace|change|add|remove|drop|more|less|instead|focus)\b/i.test(q)) {
+      /* They asked for a change and the reply came back as prose only. */
+      text += "\n\n\u26a0 That was advice only, nothing on your plan changed. Ask again more directly, for example " +
+              "\u201creplace lat pulldown on Day 2 with dumbbell rows\u201d.";
     }
 
     const h2 = getCoachChat();
@@ -3307,12 +3330,34 @@ function resetPlan() {
 function applyPlanEdits(edits) {
   const plan = JSON.parse(JSON.stringify(getPlan()));
   const done = [];
+  const norm = x => String(x||"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
   const findDay = (name) => {
     if (!name) return null;
-    const lower = String(name).toLowerCase();
-    return plan.find(d => d.name.toLowerCase() === lower)
-        || plan.find(d => d.name.toLowerCase().indexOf(lower) !== -1)
-        || plan.find(d => lower.indexOf(d.name.toLowerCase().replace(/^day \d+ — /,"")) !== -1);
+    const lower = norm(name);
+    let hit = plan.find(d => norm(d.name) === lower)
+           || plan.find(d => norm(d.name).indexOf(lower) !== -1)
+           || plan.find(d => lower.indexOf(norm(d.name).replace(/^day \d+ /,"")) !== -1);
+    if (hit) return hit;
+    /* "day 2" or just "2" */
+    const num = (lower.match(/day\s*(\d+)/) || lower.match(/^(\d+)$/) || [])[1];
+    if (num && plan[parseInt(num,10)-1]) return plan[parseInt(num,10)-1];
+    /* Fall back to whichever day shares the most words, e.g. "pull" or "legs" */
+    const words = lower.split(" ").filter(w => w.length > 2);
+    let best = null, score = 0;
+    plan.forEach(d => {
+      const dn = norm(d.name);
+      const n = words.filter(w => dn.indexOf(w) !== -1).length;
+      if (n > score) { score = n; best = d; }
+    });
+    return score > 0 ? best : null;
+  };
+  const findEx = (day, target) => {
+    if (!day || !target) return -1;
+    const t = norm(target);
+    let i = day.ex.findIndex(x => norm(x.n) === t);
+    if (i !== -1) return i;
+    i = day.ex.findIndex(x => norm(x.n).indexOf(t) !== -1 || t.indexOf(norm(x.n)) !== -1);
+    return i;
   };
   const validFig = ["bench","press","curl","pushdown","row","pulldown","squat","plank","treadmill","run","fly"];
   const clean = (ex) => ({
@@ -3324,15 +3369,18 @@ function applyPlanEdits(edits) {
     p: String(ex.p || "").slice(0, 140),
   });
 
+  const misses = [];
   (edits || []).forEach(e => {
     const day = findDay(e.day);
-    if (!day) return;
+    if (!day) { misses.push("could not find a day called \"" + (e.day||"?") + "\""); return; }
     if (e.action === "replace" && e.target && e.exercise) {
-      const i = day.ex.findIndex(x => x.n.toLowerCase() === String(e.target).toLowerCase());
+      const i = findEx(day, e.target);
       if (i !== -1) {
         const oldName = day.ex[i].n;
         day.ex[i] = clean(e.exercise);
         done.push("Swapped " + oldName + " for " + day.ex[i].n + " on " + day.name);
+      } else {
+        misses.push("\"" + e.target + "\" is not on " + day.name);
       }
     } else if (e.action === "add" && e.exercise) {
       const ex = clean(e.exercise);
@@ -3341,10 +3389,12 @@ function applyPlanEdits(edits) {
         done.push("Added " + ex.n + " to " + day.name);
       }
     } else if (e.action === "remove" && e.target) {
-      const i = day.ex.findIndex(x => x.n.toLowerCase() === String(e.target).toLowerCase());
+      const i = findEx(day, e.target);
       if (i !== -1 && day.ex.length > 1) {
         done.push("Removed " + day.ex[i].n + " from " + day.name);
         day.ex.splice(i, 1);
+      } else {
+        misses.push("\"" + e.target + "\" is not on " + day.name);
       }
     }
   });
@@ -3353,6 +3403,7 @@ function applyPlanEdits(edits) {
     try { savePlan(plan); }
     catch(err) { return ["Changed on screen but SAVE FAILED: " + err.message]; }
   }
+  if (!done.length && misses.length) return ["__MISS__" + misses[0]];
   return done;
 }
 
@@ -3745,6 +3796,12 @@ function setupScreen() {
       '<button class="su-opt" data-su="cardio" data-v="no">No, weights only</button>' +
     '</div>' +
 
+    '<div class="su-q">Sex? This changes the calorie maths by about 160 a day.</div>' +
+    '<div class="su-opts" id="su-sex">' +
+      '<button class="su-opt" data-su="sex" data-v="female">Female</button>' +
+      '<button class="su-opt" data-su="sex" data-v="male">Male</button>' +
+      '<button class="su-opt" data-su="sex" data-v="">Rather not say</button>' +
+    '</div>' +
     '<div class="su-q">A few details, so weights and calories are sensible</div>' +
     '<div class="co-form">' +
       '<div class="f"><label>Age</label><input id="su-age" inputmode="numeric" value="'+esc(p.age||"")+'"></div>' +
@@ -3760,7 +3817,7 @@ function setupScreen() {
   '</div>';
 }
 
-let _setup = { days: 4, focus: [], kit: "full", cardio: true };
+let _setup = { days: 4, focus: [], kit: "full", cardio: true, sex: "" };
 let _forceSetup = false;
 /* Reachable even if the app wrongly believes setup is finished. */
 function openSetup() {
@@ -3782,6 +3839,7 @@ document.addEventListener("click", function(e) {
   if (k === "days") _setup.days = parseInt(v,10);
   if (k === "kit") _setup.kit = v;
   if (k === "cardio") _setup.cardio = (v === "yes");
+  if (k === "sex") _setup.sex = v;
   const wrap = el.parentNode;
   Array.prototype.forEach.call(wrap.children, c => c.classList.remove("on"));
   el.classList.add("on");
@@ -3790,7 +3848,7 @@ document.addEventListener("click", function(e) {
 function finishSetup() {
   _forceSetup = false;
   const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
-  const prof = { age: g("su-age"), height: g("su-height"), weight: g("su-weight"), unit: getUnits() };
+  const prof = { age: g("su-age"), height: g("su-height"), weight: g("su-weight"), unit: getUnits(), sex: _setup.sex || "" };
   localStorage.setItem(LS_PROFILE, JSON.stringify(prof));
   const opts = { days: _setup.days, focus: _setup.focus.slice(), kit: _setup.kit, cardio: _setup.cardio };
   localStorage.setItem(LS_SETUP, JSON.stringify(opts));
@@ -3901,6 +3959,11 @@ function renderCoach() {
         '<div class="f"><label>Age</label><input id="co-age" inputmode="numeric" value="'+esc(p.age||"")+'" placeholder="32"></div>' +
         '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="co-height" inputmode="numeric" value="'+esc(p.height||"")+'" placeholder="'+(getUnits()==="lb"?"69":"175")+'"></div>' +
         '<div class="f"><label>Weight '+getUnits()+'</label><input id="co-weight" inputmode="decimal" value="'+esc(p.weight || (w!=null?String(bodyWeightDisplay(w)):""))+'" placeholder="'+(getUnits()==="lb"?"161":"73")+'"></div>' +
+        '<div class="f"><label>Sex</label><select id="co-sex" class="ef-sel">' +
+          '<option value=""'+(!p.sex?" selected":"")+'>Not set</option>' +
+          '<option value="female"'+(p.sex==="female"?" selected":"")+'>Female</option>' +
+          '<option value="male"'+(p.sex==="male"?" selected":"")+'>Male</option>' +
+        '</select></div>' +
       '</div>' +
       '<div class="btn-row"><button class="co-btn" onclick="saveCoachProfile()">Save</button>' +
         '<button class="co-btn ghost" onclick="reopenSetup()">Rebuild my plan</button></div>' +
@@ -3959,6 +4022,7 @@ function restoreOpenDays() {
     height: document.getElementById("co-height").value.trim(),
     weight: document.getElementById("co-weight").value.trim(),
     unit: getUnits(),
+    sex: (document.getElementById("co-sex") || {}).value || "",
   };
   localStorage.setItem(LS_PROFILE, JSON.stringify(p));
   showToast(null, {ok:true, text:"Profile saved."});
@@ -4223,6 +4287,7 @@ function renderLog() {
     mealsHtml = '<div class="meals">' + entry.meals.map((m,i) =>
       '<div class="meal"><div><div class="n">'+esc(m.name)+'</div>' +
       (m.note ? '<div class="note">'+esc(m.note)+'</div>' : '') +
+      (m.protein ? '<div class="m-pro">'+m.protein+' g protein</div>' : '') +
       '</div><div class="right"><span class="k">'+m.kcal.toLocaleString()+'</span>' +
       rowCtrls("meal", i) + '</div></div>'
     ).join("") + '</div>';
@@ -4258,7 +4323,16 @@ function renderLog() {
       chip("Net", net.toLocaleString(), "var(--amber)") +
       chip(over?"Over by":"Remaining", Math.abs(remaining).toLocaleString(), over?"var(--red)":"var(--green)") +
       chip("Weight", entry.weightKg!=null ? bodyWeightDisplay(entry.weightKg)+" "+getUnits() : "—") +
-      chip("Body fat", entry.bodyFatPct!=null ? entry.bodyFatPct+"%" : "—") +
+      (function(){
+        const pro = dayProtein(selected), tgt = proteinTarget();
+        if (!tgt) return chip("Protein", pro ? pro+" g" : "—");
+        const pct = Math.min(pro / tgt, 1) * 100;
+        const hit = pro >= tgt * 0.9;
+        return '<div class="chip"><div class="l">Protein</div>' +
+          '<div class="v" style="color:'+(hit?"var(--cyan)":"var(--ink)")+'">'+pro+' <span class="pro-t">/ '+tgt+' g</span></div>' +
+          '<div class="pro-bar"><div style="width:'+pct+'%;background:'+(hit?"var(--cyan)":"var(--amber)")+'"></div></div>' +
+        '</div>';
+      })() +
     '</div>' + avgHtml + quickAddBar() + mealsHtml + exHtml +
     '<div class="btn-row" style="margin-top:22px">' +
       '<button class="btn danger" onclick="deleteDay(this)">Delete this whole day</button>' +
@@ -4535,7 +4609,11 @@ function calorieModel() {
   let cm = parseFloat(p.height);
   if (isNaN(cm) || cm <= 0) cm = 175;
   else if (getUnits() === "lb") cm = cm * 2.54; // stored as inches
-  const bmr = Math.round(10*kg + 6.25*cm - 5*age + 5); // male
+  /* Mifflin-St Jeor. The constant differs by sex and it is not small:
+     about 166 kcal a day, which is most of a light deficit. */
+  const sex = (getProfile().sex === "female") ? "female" : (getProfile().sex === "male" ? "male" : "unspecified");
+  const sexConst = sex === "female" ? -161 : 5;
+  const bmr = Math.round(10*kg + 6.25*cm - 5*age + sexConst);
   /* Sessions logged in the last 14 days decide the activity multiplier
      instead of a self-assessment. */
   const w = getWorkouts();
@@ -4560,7 +4638,7 @@ function calorieModel() {
     source = "measured by your phone over " + meas.days + " days";
   }
   return {
-    bmr, kg, cm, age, mult, label, maintenance, source,
+    bmr, kg, cm, age, mult, label, maintenance, source, sex,
     measured: meas,
     formulaMaintenance: Math.round(bmr * mult),
     perWeek: Math.round(perWeek * 10) / 10,
@@ -4568,6 +4646,7 @@ function calorieModel() {
     steady: Math.round((maintenance - 500) / 10) * 10,
     recomp: Math.round((maintenance - 150) / 10) * 10,
     protein: Math.round(kg * 1.9),
+    sexKnown: sex !== "unspecified",
   };
 }
 function goalPanel() {
@@ -4966,6 +5045,7 @@ function applyUpdates(updates) {
     if (Array.isArray(u.addMeals)) for (const m of u.addMeals) {
       if (m && typeof m.name==="string" && typeof m.kcal==="number") {
         const meal = { id: newId(), name: m.name, kcal: Math.round(m.kcal) };
+        if (typeof m.protein === "number" && m.protein >= 0) meal.protein = Math.round(m.protein);
         if (m.note) meal.note = m.note;
         entry.meals.push(meal); touched = true;
       }
@@ -5009,6 +5089,8 @@ The user typed: "${userText}"
 
 Interpret this as diary updates. Estimate calories realistically (typical restaurant/label values, sensible rounding).
 
+PROTEIN: give a "protein" figure in grams for every food item, your best estimate. Meat, fish, eggs, dairy and pulses carry most of it; oils, fruit and sugar carry none. Use 0 when there is essentially none.
+
 HOME COOKING: people describe ingredients, not the fat they cooked them in, and that fat is usually 100-250 kcal a meal. When something is clearly homemade, add what a normal health-conscious home cook would actually use, even if it was not mentioned:
 - Pan-fried, sauteed, stir-fried: 1 to 2 tbsp oil or butter (120-240 kcal), split across the portions being cooked.
 - Roasted or baked vegetables, potatoes, chicken pieces: about 1 tbsp oil (120 kcal).
@@ -5023,7 +5105,7 @@ EXERCISE: if the user describes physical activity (a run, gym session, cycling, 
 IMPORTANT — clarifying questions: if the calorie estimate would swing meaningfully (roughly 75+ kcal) based on size, quantity, preparation, or type that the user did not specify (e.g. "an apricot" could be small/large/dried, "a latte" could be 8/12/16 oz or whole/skim/oat milk, "fries" could be small/medium/large), do NOT guess. Instead return empty updates and a "question" object with 2-4 short tappable options, each including its approximate kcal, e.g. {"text":"What kind of apricot?","options":["Fresh, small (~17 kcal)","Fresh, large (~35 kcal)","Dried, 5 pieces (~85 kcal)"]}. Ask at most ONE question per message and only when it genuinely matters — if the message says "(clarification: …)" it contains the answer, so log it without asking again. For trivial ambiguity, just use the typical value.
 
 Respond with ONLY a JSON object, no markdown fences:
-{"updates":[{"date":"YYYY-MM-DD","addMeals":[{"name":"string","kcal":0,"note":"optional"}],"addExercise":[{"name":"string","kcal":0,"note":"optional"}],"removeIndexes":[],"removeExerciseIndexes":[],"weightKg":null,"bodyFatPct":null}],"question":null,"reply":"short confirmation with kcal breakdown"}`;
+{"updates":[{"date":"YYYY-MM-DD","addMeals":[{"name":"string","kcal":0,"protein":0,"note":"optional"}],"addExercise":[{"name":"string","kcal":0,"note":"optional"}],"removeIndexes":[],"removeExerciseIndexes":[],"weightKg":null,"bodyFatPct":null}],"question":null,"reply":"short confirmation with kcal breakdown"}`;
 
   const data = await callClaude(apiKey, {
     model: "claude-sonnet-4-6",
