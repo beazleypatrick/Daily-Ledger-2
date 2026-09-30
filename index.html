@@ -448,6 +448,23 @@
   .m-pro { font-family:var(--mono); font-size:11px; color:#0A6C78; margin-top:3px; }
   .bk-check { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ink); margin-bottom:10px; cursor:pointer; }
   .bk-check input { width:20px; height:20px; accent-color:var(--cyan); }
+  .act-row { display:flex; flex-wrap:wrap; gap:8px; }
+  .act { display:flex; align-items:stretch; border:1px solid var(--cyan); border-radius:999px; overflow:hidden; background:var(--panel); }
+  .act-main {
+    background:none; border:none; color:var(--ink); font-family:var(--sans); font-size:13.5px;
+    font-weight:700; padding:11px 14px; cursor:pointer; min-height:46px; text-align:left;
+  }
+  .act-main span { display:block; font-family:var(--mono); font-size:10.5px; color:var(--ink-dim); font-weight:400; }
+  .act-half, .act-x {
+    background:none; border:none; border-left:1px solid var(--line); color:#0A6C78;
+    font-size:15px; padding:0 13px; cursor:pointer; font-family:var(--sans); font-weight:700;
+  }
+  .act-x { color:var(--red); }
+  .act-main:active { background:var(--cyan); color:#08343A; }
+  .act.act-due { border-width:2px; }
+  .add-on { font-size:12.5px; color:var(--ink-dim); margin:10px 0 4px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .est-line { font-size:13px; color:var(--ink); background:rgba(18,179,199,.12); border-radius:10px; padding:9px 12px; margin:10px 0; line-height:1.45; }
+  .est-line b { color:#0A6C78; }
   .avg-bubble {
     background:linear-gradient(140deg, rgba(245,195,63,.30), rgba(18,179,199,.14));
     border:1px solid var(--amber-dim); border-radius:16px;
@@ -591,7 +608,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v50";
+const APP_VERSION = "v53";
 
 
 const DEFAULT_GOAL = 1900;
@@ -611,6 +628,8 @@ const LS_TARGETS = "ledger-targets";
 const LS_PLAN = "ledger-plan";
 const LS_REVIVED = "ledger-revived";
 const LS_SETUP = "ledger-setup";
+const LS_ACTIVITIES = "ledger-activities";
+const LS_PLANPREV = "ledger-plan-prev";
 const LS_HEALTH = "ledger-health";
 const LS_GHTOKEN = "ledger-gh-token";
 const LS_GISTID  = "ledger-gist-id";
@@ -638,6 +657,7 @@ const SYNC_KEYS = [
   ["deleted", LS_DELETED],
   ["revived", LS_REVIVED],
   ["setup",   LS_SETUP],
+  ["acts",    LS_ACTIVITIES],
   ["health",  LS_HEALTH],
 ];
 const GIST_FILE = "daily-ledger.json";
@@ -983,7 +1003,7 @@ function mergeIntoLocal(remote) {
 
   /* Single-value settings: newer side wins. */
   [["goal",LS_GOAL],["units",LS_UNITS],["profile",LS_PROFILE],["bodymap",LS_BODYMAP],
-   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN],["plan",LS_PLAN],["health",LS_HEALTH],["setup",LS_SETUP]].forEach(([name,key]) => {
+   ["targets",LS_TARGETS],["pins",LS_PINS],["coachplan",LS_COACHPLAN],["plan",LS_PLAN],["health",LS_HEALTH],["setup",LS_SETUP],["acts",LS_ACTIVITIES]].forEach(([name,key]) => {
     if (remoteNewer && typeof remote[name] === "string") localStorage.setItem(key, remote[name]);
   });
   /* Notes: keep the longer text rather than silently dropping writing. */
@@ -2782,7 +2802,10 @@ function COACH_SYSTEM() {
     "Each planEdit is one of:\n" +
     '{"action":"replace","day":"exact day name from the plan","target":"exact current exercise name","exercise":{"n":"New Exercise Name","fig":"one of: bench press curl pushdown row pulldown squat plank treadmill run fly","load":"each|total|body","s":"4 × 8–10","c":["one or two short form cues"],"p":"progression rule"}}\n' +
     '{"action":"add","day":"exact day name","exercise":{ ...same shape... }}\n' +
-    '{"action":"remove","day":"exact day name","target":"exact exercise name"}\n\n' +
+    '{"action":"remove","day":"exact day name","target":"exact exercise name"}\n' +
+    '{"action":"replaceDay","day":"exact day name","name":"optional new day name","exercises":[{ ...same exercise shape... }]}\n\n' +
+    "Use replaceDay when they want a whole session changed, for example \"this week just cardio, no weights\" or \"make day 3 a rest and mobility day\". " +
+    "Replace EVERY day they meant, one replaceDay edit each, and keep each day to 45-60 minutes. Their old plan is saved automatically so they can undo. " +
     "load: use 'total' for anything weighted (both dumbbells combined, or the whole bar/stack) and 'body' for bodyweight. " +
     "fig picks the little illustration, so choose the closest movement. Leave planEdits empty for ordinary questions.";
 }
@@ -3341,6 +3364,10 @@ function resetPlan() {
    descriptions of what changed. */
 function applyPlanEdits(edits) {
   const plan = JSON.parse(JSON.stringify(getPlan()));
+  /* Keep one snapshot so a big change can be undone. */
+  if ((edits || []).some(e => e.action === "replaceDay")) {
+    try { localStorage.setItem(LS_PLANPREV, JSON.stringify({ at: new Date().toISOString(), plan: getPlan() })); } catch(e) {}
+  }
   const done = [];
   const norm = x => String(x||"").toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
   const findDay = (name) => {
@@ -3400,6 +3427,12 @@ function applyPlanEdits(edits) {
         day.ex.push(ex);
         done.push("Added " + ex.n + " to " + day.name);
       }
+    } else if (e.action === "replaceDay" && Array.isArray(e.exercises) && e.exercises.length) {
+      /* Swap out a whole day, e.g. "this week just cardio". */
+      const before = day.ex.length;
+      day.ex = e.exercises.slice(0, 8).map(clean);
+      if (e.name) day.name = String(e.name).slice(0, 48);
+      done.push("Rebuilt " + day.name + " (" + before + " exercises out, " + day.ex.length + " in)");
     } else if (e.action === "remove" && e.target) {
       const i = findEx(day, e.target);
       if (i !== -1 && day.ex.length > 1) {
@@ -3660,6 +3693,30 @@ function addConditioning(i, dayIdx) {
   catch(e) { showToast(null, {ok:false, text:"Could not save: " + e.message}); }
   renderCoach();
 }
+function getPrevPlan() {
+  try { return JSON.parse(localStorage.getItem(LS_PLANPREV)); } catch(e) { return null; }
+}
+function restorePrevPlan() {
+  const prev = getPrevPlan();
+  if (!prev || !prev.plan) { showToast(null, {ok:false, text:"Nothing to go back to."}); return; }
+  try {
+    savePlan(prev.plan);
+    localStorage.removeItem(LS_PLANPREV);
+    renderCoach();
+    showToast(null, {ok:true, text:"Back to your previous plan."});
+  } catch(e) { showToast(null, {ok:false, text:"Could not restore: " + e.message}); }
+}
+function prevPlanPanel() {
+  const prev = getPrevPlan();
+  if (!prev) return "";
+  const when = prev.at ? new Date(prev.at) : null;
+  return '<div class="co-box" style="border-color:var(--amber-dim)">' +
+    '<div class="co-sub">Coach Claude reshaped your plan' + (when ? " on " + fmtDay(when.toISOString().slice(0,10)) : "") +
+    '. Your old one is saved.</div>' +
+    '<div class="btn-row"><button class="co-btn ghost" onclick="restorePrevPlan()">Go back to my previous plan</button></div>' +
+  '</div>';
+}
+
 function conditioningPanel() {
   const days = getPlan();
   return '<div class="co-box collapsible" id="cb-cond"><div class="t ch" onclick="toggleBox(\'cb-cond\')">Conditioning and HIIT <span class="caret">\u25be</span></div>' +
@@ -3825,33 +3882,33 @@ function setupScreen() {
 
     '<div class="su-q">How many days a week can you train?</div>' +
     '<div class="su-opts" id="su-days">' +
-      [2,3,4,5].map(n => '<button class="su-opt'+(n===4?" on":"")+'" data-su="days" data-v="'+n+'">'+n+' days</button>').join("") +
+      [2,3,4,5].map(n => '<button class="su-opt'+(n===_setup.days?" on":"")+'" data-su="days" data-v="'+n+'">'+n+' days</button>').join("") +
     '</div>' +
 
     '<div class="su-q">What do you most want to work on? Pick any.</div>' +
     '<div class="su-opts" id="su-focus">' +
       ["chest","back","legs","shoulders","arms","core"].map(g =>
-        '<button class="su-opt" data-su="focus" data-v="'+g+'">'+GROUP_LABELS[g]+'</button>').join("") +
+        '<button class="su-opt'+((_setup.focus||[]).indexOf(g)!==-1?" on":"")+'" data-su="focus" data-v="'+g+'">'+GROUP_LABELS[g]+'</button>').join("") +
     '</div>' +
 
     '<div class="su-q">What equipment do you have?</div>' +
     '<div class="su-opts" id="su-kit">' +
-      '<button class="su-opt on" data-su="kit" data-v="full">Full gym</button>' +
-      '<button class="su-opt" data-su="kit" data-v="dumbbells">Dumbbells only</button>' +
-      '<button class="su-opt" data-su="kit" data-v="none">Bodyweight only</button>' +
+      '<button class="su-opt'+(_setup.kit==="full"?" on":"")+'" data-su="kit" data-v="full">Full gym</button>' +
+      '<button class="su-opt'+(_setup.kit==="dumbbells"?" on":"")+'" data-su="kit" data-v="dumbbells">Dumbbells only</button>' +
+      '<button class="su-opt'+(_setup.kit==="none"?" on":"")+'" data-su="kit" data-v="none">Bodyweight only</button>' +
     '</div>' +
 
     '<div class="su-q">Include cardio in each session?</div>' +
     '<div class="su-opts" id="su-cardio">' +
-      '<button class="su-opt on" data-su="cardio" data-v="yes">Yes</button>' +
-      '<button class="su-opt" data-su="cardio" data-v="no">No, weights only</button>' +
+      '<button class="su-opt'+(_setup.cardio!==false?" on":"")+'" data-su="cardio" data-v="yes">Yes</button>' +
+      '<button class="su-opt'+(_setup.cardio===false?" on":"")+'" data-su="cardio" data-v="no">No, weights only</button>' +
     '</div>' +
 
     '<div class="su-q">Sex? This changes the calorie maths by about 160 a day.</div>' +
     '<div class="su-opts" id="su-sex">' +
-      '<button class="su-opt" data-su="sex" data-v="female">Female</button>' +
-      '<button class="su-opt" data-su="sex" data-v="male">Male</button>' +
-      '<button class="su-opt" data-su="sex" data-v="">Rather not say</button>' +
+      '<button class="su-opt'+(_setup.sex==="female"?" on":"")+'" data-su="sex" data-v="female">Female</button>' +
+      '<button class="su-opt'+(_setup.sex==="male"?" on":"")+'" data-su="sex" data-v="male">Male</button>' +
+      '<button class="su-opt'+(!_setup.sex?" on":"")+'" data-su="sex" data-v="">Rather not say</button>' +
     '</div>' +
     '<div class="su-q">A few details, so weights and calories are sensible</div>' +
     '<div class="co-form">' +
@@ -3873,7 +3930,10 @@ let _forceSetup = false;
 /* Reachable even if the app wrongly believes setup is finished. */
 function openSetup() {
   const cur = getSetup();
-  if (cur) _setup = { days: cur.days, focus: (cur.focus||[]).slice(), kit: cur.kit, cardio: cur.cardio !== false };
+  const prof = getProfile();
+  if (cur) _setup = { days: cur.days, focus: (cur.focus||[]).slice(), kit: cur.kit,
+                      cardio: cur.cardio !== false, sex: prof.sex || "" };
+  else _setup.sex = prof.sex || _setup.sex || "";
   _forceSetup = true;
   if (currentTab !== "coach") switchTab("coach"); else renderCoach();
 }
@@ -3903,7 +3963,16 @@ function finishSetup() {
   localStorage.setItem(LS_PROFILE, JSON.stringify(prof));
   const opts = { days: _setup.days, focus: _setup.focus.slice(), kit: _setup.kit, cardio: _setup.cardio };
   localStorage.setItem(LS_SETUP, JSON.stringify(opts));
-  try { savePlan(generatePlan(opts)); } catch(e) {}
+  try {
+    const fresh = generatePlan(opts);
+    /* Carry over anything added by hand so a rebuild does not delete it. */
+    const custom = [];
+    (PLAN_CACHE || []).forEach(d => (d.ex || []).forEach(e => { if (e.custom) custom.push(e); }));
+    if (custom.length) {
+      custom.forEach((e, i) => { const t = fresh[i % fresh.length]; if (t && !t.ex.some(x => x.n === e.n)) t.ex.push(e); });
+    }
+    savePlan(fresh);
+  } catch(e) {}
   /* Set a starting calorie goal from the numbers just given. */
   try {
     const m = calorieModel();
@@ -3938,6 +4007,233 @@ function genericCoachNotes() {
   return parts.join(" ");
 }
 
+/* ===== Custom activities =====
+   Classes and walks are real training and should count, both as calories and
+   as a session. MET values are standard compendium figures. */
+const ACTIVITY_TYPES = [
+  { k:"barre",     label:"Barre",            met:4.0, fig:"squat"     },
+  { k:"pilates",   label:"Pilates",          met:3.5, fig:"plank"     },
+  { k:"yoga",      label:"Yoga",             met:3.0, fig:"plank"     },
+  { k:"hiit",      label:"HIIT",             met:8.0, fig:"run"       },
+  { k:"treadmill", label:"Treadmill",        met:8.5, fig:"treadmill" },
+  { k:"walk",      label:"Walk",             met:4.3, fig:"treadmill" },
+  { k:"run",       label:"Run",              met:10.0,fig:"run"       },
+  { k:"cycle",     label:"Cycling",          met:6.8, fig:"run"       },
+  { k:"swim",      label:"Swimming",         met:7.0, fig:"run"       },
+  { k:"rowing",    label:"Rowing machine",   met:7.0, fig:"row"       },
+  { k:"kickball",  label:"Kickball",         met:6.0, fig:"run"       },
+  { k:"sport",     label:"Sport or class",   met:6.0, fig:"run"       },
+];
+function activityByKey(k) { return ACTIVITY_TYPES.find(a => a.k === k) || ACTIVITY_TYPES[0]; }
+
+function getActivities() {
+  try { return JSON.parse(localStorage.getItem(LS_ACTIVITIES)) || []; } catch(e) { return []; }
+}
+function saveActivities(a) {
+  localStorage.setItem(LS_ACTIVITIES, JSON.stringify(a));
+  queuePush();
+}
+/* kcal from METs, scaled to whoever is using the app. */
+function activityBurn(met, mins) {
+  const m = parseFloat(mins);
+  if (isNaN(m) || m <= 0) return 0;
+  let kg = latestWeight();
+  if (kg == null) {
+    const pw = parseFloat(getProfile().weight);
+    kg = (!isNaN(pw) && pw > 0) ? bodyWeightToKg(getProfile().weight) : 73;
+  }
+  return Math.round(met * 3.5 * kg / 200 * m);
+}
+
+
+const EFFORT_MULT = { easy: 0.85, medium: 1, hard: 1.2 };
+const WEEKDAYS = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+
+let _newAct = { type: "barre", name: "", effort: "medium", place: "quick",
+                mins: "45", kcal: "", weekday: "" };
+let _showAddAct = false;
+
+function openAddActivity(preset) {
+  _newAct = { type: "barre", name: "", effort: "medium", place: "quick",
+              mins: "45", kcal: "", weekday: "" };
+  if (preset) Object.assign(_newAct, preset);
+  _showAddAct = true;
+  renderCoach();
+}
+function closeAddActivity() { _showAddAct = false; renderCoach(); }
+
+/* A figure you give beats an estimate. Otherwise METs scaled to bodyweight
+   and effort, which is the whole point of the app doing the work for you. */
+function presetKcal(p, met, effort) {
+  if (p && p.kcal) return Math.round(p.kcal);
+  return Math.round(activityBurn(met, p ? p.mins : 45) * (EFFORT_MULT[effort] || 1));
+}
+
+function addActivityPanel() {
+  if (!_showAddAct) return "";
+  const days = getPlan();
+  const t = activityByKey(_newAct.type);
+  const liveEst = Math.round(activityBurn(t.met, parseInt(_newAct.mins,10) || 45) * (EFFORT_MULT[_newAct.effort] || 1));
+  return '<div class="co-box" id="add-act" style="border-color:var(--cyan)">' +
+    '<div class="t" style="color:#0A6C78">Add your own workout</div>' +
+    '<div class="su-q" style="font-size:13.5px">What kind?</div>' +
+    '<div class="su-opts">' +
+      ACTIVITY_TYPES.map(a => '<button class="su-opt'+(_newAct.type===a.k?" on":"")+'" data-na="type" data-v="'+a.k+'">'+a.label+'</button>').join("") +
+    '</div>' +
+    '<div class="su-q" style="font-size:13.5px">How hard is it, usually?</div>' +
+    '<div class="su-opts">' +
+      ["easy","medium","hard"].map(e => '<button class="su-opt'+(_newAct.effort===e?" on":"")+'" data-na="effort" data-v="'+e+'">'+e.charAt(0).toUpperCase()+e.slice(1)+'</button>').join("") +
+    '</div>' +
+    '<div class="co-form" style="margin-top:12px">' +
+      '<div class="f" style="flex:2 1 170px"><label>Name it</label><input id="na-name" placeholder="'+esc(t.label)+'" value="'+esc(_newAct.name)+'"></div>' +
+      '<div class="f"><label>minutes</label><input id="na-mins" inputmode="numeric" value="'+esc(_newAct.mins)+'"></div>' +
+    '</div>' +
+    '<div class="est-line">Estimated burn: <b>' + liveEst + ' calories</b> for ' + (parseInt(_newAct.mins,10)||45) + ' min. ' +
+      'That is worked out from the activity, your weight and the effort level.</div>' +
+    '<div class="co-form">' +
+      '<div class="f" style="flex:1 1 200px"><label>Known calories (optional)</label>' +
+      '<input id="na-kcal" inputmode="numeric" placeholder="leave blank to let the app estimate" value="'+esc(_newAct.kcal)+'"></div>' +
+    '</div>' +
+    '<div class="su-q" style="font-size:13.5px">Where does it go?</div>' +
+    '<div class="su-opts">' +
+      '<button class="su-opt'+(_newAct.place==="quick"?" on":"")+'" data-na="place" data-v="quick">Quick log button</button>' +
+      '<button class="su-opt'+(_newAct.place==="own"?" on":"")+'" data-na="place" data-v="own">Its own day in the plan</button>' +
+      days.map((d,i) => '<button class="su-opt'+(_newAct.place===String(i)?" on":"")+'" data-na="place" data-v="'+i+'">Add to ' + esc(d.name.replace(/^Day \d+ \u2014 /,"")) + '</button>').join("") +
+    '</div>' +
+    '<div class="hint">A quick log button always appears too, so you can log it on its own whenever it happens.</div>' +
+    '<div class="su-q" style="font-size:13.5px">Usual day of the week? Optional.</div>' +
+    '<div class="su-opts">' +
+      '<button class="su-opt'+(_newAct.weekday===""?" on":"")+'" data-na="weekday" data-v="">Any day</button>' +
+      WEEKDAYS.map((w,i) => '<button class="su-opt'+(_newAct.weekday===String(i)?" on":"")+'" data-na="weekday" data-v="'+i+'">'+w.slice(0,3)+'</button>').join("") +
+    '</div>' +
+    '<div class="btn-row">' +
+      '<button class="co-btn" onclick="saveNewActivity()">Add it</button>' +
+      '<button class="co-btn ghost" onclick="closeAddActivity()">Cancel</button>' +
+    '</div>' +
+  '</div>';
+}
+
+function grabActFields() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value : ""; };
+  _newAct.name = g("na-name");
+  _newAct.mins = g("na-mins");
+  _newAct.kcal = g("na-kcal");
+}
+document.addEventListener("click", function(e) {
+  const el = e.target.closest("[data-na]");
+  if (!el) return;
+  grabActFields();
+  const k = el.dataset.na;
+  if (k === "type") _newAct.type = el.dataset.v;
+  if (k === "place") _newAct.place = el.dataset.v;
+  if (k === "effort") _newAct.effort = el.dataset.v;
+  if (k === "weekday") _newAct.weekday = el.dataset.v;
+  renderCoach();
+});
+
+function saveNewActivity() {
+  grabActFields();
+  const t = activityByKey(_newAct.type);
+  const name = (_newAct.name.trim() || t.label).slice(0, 40);
+  const mins = parseInt(_newAct.mins, 10) || 45;
+  const known = parseInt(_newAct.kcal, 10);
+  const preset = { mins: mins, kcal: (!isNaN(known) && known > 0) ? known : null };
+
+  const acts = getActivities();
+  const existing = acts.findIndex(a => a.name.toLowerCase() === name.toLowerCase());
+  const rec = {
+    id: existing !== -1 ? acts[existing].id : newId(),
+    name: name, type: t.k, met: t.met, effort: _newAct.effort,
+    presets: [preset],
+    weekday: _newAct.weekday === "" ? null : parseInt(_newAct.weekday, 10),
+  };
+  if (existing !== -1) acts[existing] = rec; else acts.push(rec);
+  saveActivities(acts);
+
+  const exBlock = {
+    fig: t.fig, n: name, load: "body", s: mins + " min", custom: 1,
+    c: [t.label + " session.", "Log the minutes you actually did."], p: "",
+  };
+  const burn = presetKcal(preset, t.met, _newAct.effort);
+
+  if (_newAct.place === "own") {
+    /* Its own day, for when this is the whole session. */
+    const plan = JSON.parse(JSON.stringify(getPlan()));
+    if (!plan.some(d => d.name.toLowerCase().indexOf(name.toLowerCase()) !== -1)) {
+      plan.push({
+        name: name + (rec.weekday != null ? " \u2014 " + WEEKDAYS[rec.weekday] + "s" : ""),
+        burn: burn, meta: "", ex: [exBlock],
+      });
+      try { savePlan(plan); } catch(err) {}
+    }
+  } else if (_newAct.place !== "quick") {
+    const plan = JSON.parse(JSON.stringify(getPlan()));
+    const day = plan[parseInt(_newAct.place, 10)];
+    if (day && !day.ex.some(x => x.n === name)) {
+      day.ex.push(exBlock);
+      try { savePlan(plan); } catch(err) {}
+    }
+  }
+  _showAddAct = false;
+  renderCoach();
+  showToast(null, {ok:true, text:name + " added. About " + burn + " calories for " + mins + " min."});
+}
+
+function removeActivity(id) {
+  saveActivities(getActivities().filter(a => a.id !== id));
+  renderCoach();
+}
+
+/* One tap: logs the calories AND counts as a session for the schedule. */
+function logActivity(id, idx) {
+  const a = getActivities().find(x => x.id === id);
+  if (!a) return;
+  const presets = a.presets || [{ mins: a.mins || 45, kcal: null }];
+  const p = presets[idx] || presets[0];
+  const burn = presetKcal(p, a.met, a.effort);
+  const label = a.name + " \u2014 " + p.mins + " min";
+  const entry = ensureDay(todayISO());
+  entry.exercise.push({ id: newId(), name: label, kcal: burn });
+  selected = todayISO();
+  const w = getWorkouts();
+  if (!w[a.name]) w[a.name] = [];
+  w[a.name].push({ id: newId(), date: todayISO(), day: a.name, weight: "", unit: getUnits(),
+                   reps: "", sets: "", mins: String(p.mins), effort: "", done: true });
+  try {
+    saveDiary(); saveWorkouts(w);
+    showToast(null, {ok:true, text:label + " logged. " + burn + " kcal, and it counts as a session."});
+  } catch(e) {
+    showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: " + e.message});
+  }
+  render();
+}
+function todayWeekday() { return new Date().getDay(); }
+
+function activityBar() {
+  const acts = getActivities();
+  if (!acts.length) return "";
+  const dow = todayWeekday();
+  const dueToday = acts.filter(a => a.weekday === dow);
+  return (dueToday.length
+    ? '<div class="co-box" style="border-color:var(--cyan);background:rgba(18,179,199,.10)">' +
+      '<div class="co-sub" style="margin-bottom:8px"><b>It is ' + WEEKDAYS[dow] + '.</b> ' +
+      dueToday.map(a => esc(a.name)).join(" and ") + ' usually happens today. Tap to log it, on its own or on top of a session.</div>' +
+      '<div class="act-row">' + dueToday.map(a => actChip(a, true)).join("") + '</div></div>'
+    : "") +
+    '<div class="co-box" style="padding:14px 16px">' +
+    '<div class="co-sub" style="margin-bottom:8px"><b>Quick log</b> \u00b7 counts as calories and as a session</div>' +
+    '<div class="act-row">' + acts.map(a => actChip(a, false)).join("") + '</div></div>';
+}
+function actChip(a, big) {
+  const presets = a.presets || [{ mins: a.mins || 45, kcal: null }];
+  const p = presets[0];
+  return '<div class="act'+(big?" act-due":"")+'">' +
+    '<button class="act-main" onclick="logActivity(\''+a.id+'\',0)">' +
+      esc(a.name) + ' <span>' + p.mins + ' min \u00b7 ' + presetKcal(p, a.met, a.effort) + ' cal</span></button>' +
+    '<button class="act-x" onclick="removeActivity(\''+a.id+'\')" title="Remove">\u00d7</button>' +
+  '</div>';
+}
+
 function renderCoach() {
   const v = document.getElementById("view-coach");
   if (needsSetup() || _forceSetup) { v.innerHTML = setupScreen(); return; }
@@ -3949,6 +4245,9 @@ function renderCoach() {
 
   v.innerHTML =
     /* 1. What to do, right at the top. */
+    activityBar() +
+    addActivityPanel() +
+    prevPlanPanel() +
     catchUpPanel() +
     nextUpPanel() +
     homeworkPanel() +
@@ -3971,6 +4270,7 @@ function renderCoach() {
     }).join("") +
 
     /* 2. Everything else, folded away. */
+    '<div class="btn-row" style="margin:14px 0 4px"><button class="co-btn ghost" onclick="openAddActivity()">+ Add custom workout</button></div>' +
     '<div class="not-mine">Not your plan? <button class="nm-btn" onclick="openSetup()">Build my own</button></div>' +
     '<div class="co-more">More</div>' +
     conditioningPanel() +
@@ -4626,7 +4926,7 @@ function kv(l,v,tone){ return '<div class="kv"><span class="l">'+l+'</span><span
 function everyKey() {
   return [LS_DIARY, LS_NOTES, LS_PINS, LS_GOAL, LS_UNITS, LS_WORKOUTS, LS_TARGETS,
           LS_PROFILE, LS_BODYMAP, LS_COACHPLAN, LS_PLAN, LS_HEALTH, LS_SETUP,
-          LS_DELETED, LS_REVIVED, LS_CHAT, LS_COACHCHAT, LS_KEY, LS_GHTOKEN, LS_GISTID,
+          LS_DELETED, LS_REVIVED, LS_CHAT, LS_COACHCHAT, LS_KEY, LS_GHTOKEN, LS_GISTID, LS_ACTIVITIES,
           "ledger-open-days", "ledger-coach-open", "ledger-last-reply"];
 }
 function buildFullBackup(includeKey) {
@@ -4715,7 +5015,7 @@ function copyBackup(btn) {
 function factoryReset(btn) {
   if (btn.dataset.armed !== "1") { btn.dataset.armed = "1"; btn.textContent = "Tap again: wipes EVERYTHING on this device"; return; }
   [LS_DIARY, LS_NOTES, LS_PINS, LS_GOAL, LS_WORKOUTS, LS_TARGETS, LS_PROFILE, LS_BODYMAP,
-   LS_COACHPLAN, LS_PLAN, LS_HEALTH, LS_SETUP, LS_DELETED, LS_REVIVED, LS_CHAT, LS_COACHCHAT,
+   LS_COACHPLAN, LS_PLAN, LS_HEALTH, LS_SETUP, LS_ACTIVITIES, LS_DELETED, LS_REVIVED, LS_CHAT, LS_COACHCHAT,
    "ledger-open-days", "ledger-coach-open", "ledger-session", "ledger-homework", "ledger-catchup",
    "ledger-last-fp", "ledger-last-reply"].forEach(k => localStorage.removeItem(k));
   PLAN_CACHE = null;
