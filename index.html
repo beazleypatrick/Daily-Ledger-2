@@ -434,6 +434,9 @@
     border:1px solid var(--line); min-height:46px;
   }
   .su-opt.on { background:var(--cyan); color:#08343A; border-color:var(--cyan); font-weight:700; }
+  /* Questions a ready-made program answers for you. Still tappable, just
+     clearly not in play. */
+  .su-opt.dim { opacity:.4; }
   .co-btn.big { padding:15px 26px; font-size:15px; width:100%; }
   .not-mine {
     font-size:13px; color:var(--ink-dim); text-align:center; margin:18px 0 4px;
@@ -608,7 +611,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v53";
+const APP_VERSION = "v54";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1352,7 +1355,9 @@ function isIsolation(name) {
 const DUMBBELL_LB = [3,5,8,10,12,15,17.5,20,22.5,25,27.5,30,32.5,35,40,45,50,55,60,65,70,75,80,85,90,95,100];
 const DUMBBELL_KG = [2,4,5,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,40,45,50];
 /* Machines where a 5 lb adder is available. */
-const FINE_MACHINES = /squeeze|chest fly|pulldown|seated cable row/i;
+/* Machines and cable stacks with a 5 lb pin rather than 10 lb plates. Cables
+   in particular progress in 5s, which the 3 Day Full Body loads rely on. */
+const FINE_MACHINES = /squeeze|chest fly|pulldown|seated cable row|cable|pec deck|rear delt|pallof|calf raise|assisted pull/i;
 
 function nearestFrom(list, v) {
   let best = list[0], gap = Math.abs(list[0] - v);
@@ -1373,7 +1378,7 @@ function snapWeight(v, ex) {
     return Math.round(perHand * 2 * 10) / 10;
   }
   /* A single dumbbell held in both hands, e.g. goblet squat. */
-  if (ex && /goblet|overhead triceps/i.test(ex.n)) {
+  if (ex && /goblet|overhead\s+\w*\s*triceps/i.test(ex.n)) {
     const ladder = lb ? DUMBBELL_LB : DUMBBELL_KG;
     return nearestFrom(ladder, n);
   }
@@ -1403,6 +1408,9 @@ function stepWeight(ex, currentTotal, dir) {
   const lb = getUnits() === "lb";
   const n = parseFloat(currentTotal);
   if (isNaN(n) || n <= 0) return 0;
+  /* Assistance machines run backwards: getting stronger means LESS weight
+     helping you, so "go up" has to step the number down. */
+  if (ex && ex.assist) dir = -dir;
   const ladder = lb ? DUMBBELL_LB : DUMBBELL_KG;
 
   if (isPairLift(ex)) {
@@ -1412,7 +1420,7 @@ function stepWeight(ex, currentTotal, dir) {
     const j = Math.min(Math.max(i + dir, 0), ladder.length - 1);
     return Math.round(ladder[j] * 2 * 10) / 10;
   }
-  if (ex && /goblet|overhead triceps/i.test(ex.n)) {
+  if (ex && /goblet|overhead\s+\w*\s*triceps/i.test(ex.n)) {
     let i = ladder.findIndex(x => Math.abs(x - n) < 0.01);
     if (i === -1) { i = ladder.findIndex(x => x > n); if (i === -1) i = ladder.length - 1; }
     const j = Math.min(Math.max(i + dir, 0), ladder.length - 1);
@@ -1521,12 +1529,46 @@ const FIG_RATIOS = { bench:0.44, press:0.36, fly:0.30, pushdown:0.28, curl:0.26,
                      row:0.50, pulldown:0.52, squat:0.34, plank:0, treadmill:0, run:0 };
 
 
+/* The rep number a prescription starts at: the bottom of "8–10", or the
+   8 in "4 × 8". Returns "" when the prescription is a time, not reps. */
+function baseReps(s) {
+  const str = String(s || "");
+  if (/\bsec\b|\bseconds\b|\bmin\b/i.test(str)) return "";
+  const range = /(\d+)\s*[–-]\s*(\d+)/.exec(str);
+  if (range) return range[1];
+  const one = /×\s*(\d+)/.exec(str);
+  return one ? one[1] : "";
+}
+
 function startingTarget(ex) {
   /* Bodyweight movements still deserve a target — just not a load. */
   if (ex.load === "body") {
     return { weight: "", reps: "", sets: "", verdict: "START HERE",
              why: "Bodyweight \u2014 no weight to pick. Log the time or reps you manage and beat it next time.",
              change: null, src: "start" };
+  }
+  /* A ready-made program names its own starting loads. Those beat anything
+     estimated from bodyweight, because someone wrote them for this plan.
+     ex.start is always the TOTAL load in POUNDS, as authored. */
+  if (ex.start) {
+    const v = getUnits() === "kg" ? ex.start / LB_PER_KG : ex.start;
+    const w0 = snapWeight(v, ex);
+    /* The program picked this load FOR these reps, so aim at what it says:
+       the bottom of a range, or the exact number when it gives one. Knocking
+       two reps off the way an estimated load does would undercut it. */
+    /* A loaded carry or hold is prescribed in seconds, not reps. */
+    const secs = (/(\d+)\s*sec/i.exec(ex.s) || [])[1];
+    return {
+      weight: w0,
+      reps: secs || baseReps(ex.s) || "8",
+      repUnit: secs ? "sec" : "reps",
+      sets: (ex.s.match(/^(\d+)/) || [null,"3"])[1],
+      verdict: "START HERE",
+      why: ex.assist
+        ? "Start around " + w0 + " " + getUnits() + " of assistance. You want 6–8 clean reps with the last two tough — a lower number means you are lifting more of yourself."
+        : "Your program's starting load. If set one moves easily, go up straight away — it is meant to be a floor, not a ceiling.",
+      change: null, src: "start",
+    };
   }
   /* Work out bodyweight from a weigh-in, else the profile, else a sane
      default. Previously this returned nothing when both were blank, which is
@@ -1644,7 +1686,9 @@ function localTarget(ex) {
   /* A long layoff overrides everything else — come back lighter. */
   const lay = layoffAdjust(ex, last.date);
   if (lay) {
-    const back = snapWeight(shown * lay.pct, ex);
+    /* On an assistance machine, easing back means MORE help, not less, so the
+       percentage has to be applied the other way up. */
+    const back = snapWeight(ex.assist ? shown / lay.pct : shown * lay.pct, ex);
     return {
       weight: back,
       reps: (cap ? String(Math.max(cap - 2, 6)) : last.reps),
@@ -1771,7 +1815,40 @@ function localTarget(ex) {
   };
 }
 /* Coach target if present (converted to current units), else local rule. */
+/* Assistance machines invert everything: progress is a SMALLER number. The
+   generic advice says "add weight", which is exactly backwards here, so the
+   wording gets rewritten on the way out rather than special-cased in a dozen
+   places inside localTarget. */
+function assistWording(t) {
+  if (!t || !t.weight) return t;
+  const U = getUnits(), o = Object.assign({}, t);
+  if (/GO UP|PUSH UP|TRY HEAVIER|TIME TO PUSH/.test(t.verdict)) {
+    o.verdict = "LESS ASSIST";
+    o.why = "You have earned it — drop the assistance to " + t.weight + " " + U +
+            ". A lower number means more of your own bodyweight, so this is the hard direction.";
+  } else if (t.verdict === "GO DOWN") {
+    o.verdict = "MORE ASSIST";
+    o.why = "Put the assistance back up to " + t.weight + " " + U +
+            " so the reps are clean, then work it down again.";
+  } else if (t.verdict === "REPEAT +1 REP") {
+    o.why = "Same assistance as last time. Chase one more rep per set — once you hit 8 on every set, take 5–10 " + U + " of assistance off.";
+  } else if (t.verdict === "MATCH IT") {
+    o.why = (t.why || "").replace(/If it moves easily, go up next time\./i,
+      "If the reps come easily, take 5–10 " + U + " of assistance off next time.");
+  } else if (t.verdict === "EASE BACK") {
+    o.why = "Been a while — put the assistance up to " + t.weight + " " + U +
+            " for a session or two, then work it back down.";
+  }
+  /* Arrows point at the number, so they flip too: down = progress here. */
+  if (o.change) o.change = o.change.replace(/[↑↓]/g, c => c === "↑" ? "↓" : "↑");
+  return o;
+}
+
 function targetFor(ex) {
+  if (ex && ex.assist) return assistWording(_targetFor(ex));
+  return _targetFor(ex);
+}
+function _targetFor(ex) {
   const t = getTargets()[ex.n];
   if (t && t.weight) {
     return {
@@ -2284,7 +2361,11 @@ function loadNote(ex) {
 
 /* Cardio is logged in minutes, not weight × sets × reps. */
 function isCardio(ex) {
-  return ex.fig === "treadmill" || ex.fig === "run" || /walk|run|bike|cycl|row machine|elliptical|stair/i.test(ex.n);
+  if (ex.fig === "treadmill" || ex.fig === "run") return true;
+  /* Word boundaries matter here: "crunch" contains "run", which was quietly
+     turning every crunch into a cardio exercise — no sets, no reps, no load,
+     and ten minutes added to the session estimate. */
+  return /\b(walk|walking|run|running|jog|jogging|bike|biking|cycle|cycling|elliptical|stair|stairs|rower|rowing)\b/i.test(ex.n);
 }
 /* MET-based burn for the cardio we actually do, scaled to bodyweight. */
 function cardioBurn(ex, minutes) {
@@ -2349,6 +2430,9 @@ function perHandOf(v) {
    exactly what's available when you're eating in a deficit. */
 function backoffSet(ex, targetWeight) {
   if (isCardio(ex) || ex.load === "body") return null;
+  /* A written program prescribes its own set count. Bolting a burnout set on
+     top both changes the stimulus and blows the session's time budget. */
+  if (ex.fixed) return null;
   const w = parseFloat(targetWeight);
   if (isNaN(w) || w <= 0) return null;
   /* Only on the exercises where it's worth the fatigue. */
@@ -2463,7 +2547,7 @@ function exCard(e, dayName) {
       '<div class="tg-sr">' +
         (tgt.sets ? '<b>'+esc(String(tgt.sets))+'</b> sets' : '') +
         (tgt.sets && tgt.reps ? ' &nbsp;of&nbsp; ' : '') +
-        (tgt.reps ? '<b>'+esc(String(tgt.reps))+'</b> reps' : '') +
+        (tgt.reps ? '<b>'+esc(String(tgt.reps))+'</b> '+esc(tgt.repUnit || "reps") : '') +
       '</div>' +
       (tgt.change ? '<div class="tg-change">'+esc(tgt.change)+'</div>' : '') +
       (function(){
@@ -3234,6 +3318,131 @@ const SPLITS = {
        { name:"Arms", g:["arms"] } ],
 };
 
+/* ===== Ready-made programs =====
+   A named program is written out exercise by exercise rather than assembled
+   from the library, because the whole point is that someone designed the
+   order, the volume and the loads together. ex.start is the TOTAL load in
+   POUNDS — dumbbell figures are doubled from the per-hand number the program
+   is written in, so 25 lb per hand is stored as 50. rest is seconds. */
+
+/* Same eight-minute warm-up on every day of the program. */
+function fbWarmup() {
+  return { fig:"treadmill", n:"Warm-up — bike, rower or incline walk", load:"body", s:"8 min",
+    rest:0, c:["4–5 min easy on the bike, rower or an incline walk.",
+      "Leg swings, hip circles and bodyweight squats — 10 each.",
+      "Band pull-aparts and arm circles — 12 each.",
+      "1–2 light ramp-up sets of your first lift. Not to failure."],
+    p:"" };
+}
+
+const PROGRAMS = {
+  "3day-fullbody": {
+    name: "3 Day Full Body",
+    days: 3,
+    blurb: "Full body (legs heavy), push, pull. Core in every session.",
+    notes: "Rest 90 sec on the first lifts, about 60 sec on the rest. " +
+           "When you hit the top of the rep range on every set, go up 2.5–5 lb next session. " +
+           "If you stall for two weeks, drop back about 10% and build up again.",
+    build: function(opts) {
+      const cardio = opts && opts.cardio !== false;
+      const fin = { fig:"treadmill", n:"Cardio finisher", load:"body", s:"5 min", rest:0,
+        c:["Bike, rower, incline walk or an easy jog — your choice.","Always last, never before the weights.","Five minutes is the floor — go longer if you have it in you."], p:"" };
+
+      const d1 = { name:"Day 1 — Full body (legs heavy)", burn:330,
+        meta:"~55–60 min · core every session", ex:[
+        fbWarmup(),
+        { fig:"squat", n:"Dumbbell Romanian deadlift", load:"total", pair:1, start:50, rest:90, s:"4 × 8",
+          c:["One dumbbell in each hand, 25 lb per hand to start.","Push your hips back, knees soft, bar path close to your legs.","Stop when you feel the hamstring stretch — not a squat."],
+          p:"Hit 8 on all four sets, then go up one dumbbell." },
+        { fig:"squat", n:"Leg press", load:"total", start:120, rest:90, s:"4 × 8–10",
+          c:["Machine stack — read the plates.","Feet shoulder-width, knees track over your toes.","Do not let your lower back round off the pad at the bottom."], p:"" },
+        { fig:"squat", n:"Dumbbell Bulgarian split squat", load:"total", pair:1, start:50, rest:60, s:"3 × 8 each leg",
+          c:["Back foot on a bench, one dumbbell in each hand.","Front shin close to vertical, drop straight down.","Finish all reps on one leg, then swap."],
+          p:"Balance first, weight second. Add load only when 8 is steady." },
+        { fig:"squat", n:"Calf raise", load:"total", start:50, rest:60, s:"3 × 12–15",
+          c:["On the calf machine or standing on the leg press.","Full stretch at the bottom, pause at the top.","Adjust the weight to feel — 40–60 lb is the usual range."],
+          p:"Higher reps on purpose — calves respond better at 12–15 than at 6–10." },
+        { fig:"press", n:"Seated dumbbell shoulder press", load:"total", pair:1, start:30, rest:60, s:"3 × 8",
+          c:["Seated, back supported, one dumbbell in each hand.","Press straight overhead — do not arch your back to finish the rep."], p:"" },
+        { fig:"pulldown", n:"Lat pulldown", load:"total", start:65, rest:60, s:"3 × 8–10",
+          c:["Machine stack weight.","Pull the bar to your upper chest, elbows down and back.","Do not lean back to muscle it down."], p:"" },
+        { fig:"plank", n:"Cable crunch", load:"total", start:40, rest:60, s:"3 × 10",
+          c:["Kneel at a high cable, rope behind your head.","Crunch with your abs — round your spine, do not pull with your arms.","30–50 lb to start."], p:"" },
+        { fig:"plank", n:"Dead bug", load:"body", rest:45, s:"3 × 8 each side",
+          c:["On your back, opposite arm and leg reach away slowly.","Lower back stays pressed to the floor the whole time."],
+          p:"Slow it down before adding reps — 4 seconds out, 4 back." },
+        { fig:"plank", n:"Plank", load:"body", rest:45, s:"2 × 45 sec",
+          c:["Forearms and toes on the floor.","Squeeze your glutes, do not let your hips sag."], p:"" },
+      ]};
+
+      const d2 = { name:"Day 2 — Push (chest and triceps)", burn:300,
+        meta:"~55 min · core every session", ex:[
+        fbWarmup(),
+        { fig:"bench", n:"Incline dumbbell press", load:"total", pair:1, start:60, rest:90, s:"4 × 8–10",
+          c:["Bench at about 30 degrees, one dumbbell in each hand — 30 lb per hand to start.","Lower to the upper chest, press up and slightly in.","Last two reps should be a real fight."], p:"" },
+        { fig:"bench", n:"Push-ups", load:"body", rest:90, s:"3 × 8–10",
+          c:["Hands under your shoulders, body in one line.","Hands on a bench to make them easier, floor when you are ready."],
+          p:"Once 3 × 10 feels easy, slow the lowering to about 3 seconds, or move from the bench to the floor." },
+        { fig:"fly", n:"Pec deck or machine fly", load:"total", start:50, rest:60, s:"3 × 10",
+          c:["Machine stack weight — 40–60 lb to start.","Squeeze and hold a second in the middle.","Elbows stay at the same bend the whole way."], p:"" },
+        { fig:"fly", n:"Dumbbell lateral raise", load:"total", pair:1, start:20, rest:60, s:"3 × 10",
+          c:["One dumbbell in each hand, arms out to the side.","Stop at shoulder height, no higher.","Light on purpose — 10 lb per hand to start."], p:"" },
+        { fig:"pushdown", n:"Cable triceps pushdown", load:"total", start:25, rest:60, s:"3 × 8–10",
+          c:["Cable stack weight.","Elbows pinned to your sides — do not let them drift forward.","Split the rope apart at the bottom."], p:"" },
+        { fig:"press", n:"Overhead dumbbell triceps extension", load:"total", start:12, rest:60, s:"3 × 10",
+          c:["ONE dumbbell held with both hands, overhead.","Lower behind your head for a full stretch.","Slow on the way down."], p:"" },
+        { fig:"plank", n:"Hanging knee raise", load:"body", rest:45, s:"3 × 10",
+          c:["Hang from the bar, knees up to your chest.","No swinging. Lower slowly."], p:"" },
+        { fig:"plank", n:"Pallof press", load:"total", start:20, rest:45, s:"3 × 10 each side",
+          c:["Stand side-on to a cable, press the handle straight out from your chest.","Resist the twist — that is the whole exercise.","15–25 lb to start."],
+          p:"Add weight when you stop wobbling at 3 × 10." },
+        { fig:"plank", n:"Side plank", load:"body", rest:45, s:"2 × 30 sec each side",
+          c:["On one forearm, body in a straight line.","Hips lifted, do not let them drop."], p:"" },
+      ]};
+
+      const d3 = { name:"Day 3 — Pull (back and biceps)", burn:300,
+        meta:"~55 min · core every session", ex:[
+        fbWarmup(),
+        { fig:"pulldown", n:"Assisted pull-ups", load:"total", assist:1, start:50, rest:90, s:"4 × 6–8",
+          c:["The number is how much the machine HELPS you, so lower is harder.","Pick a level where you get 6–8 clean reps and the last two are tough.","Full hang at the bottom, chin over the bar at the top."],
+          p:"When you hit 8 on every set, take 5–10 lb of assistance off." },
+        { fig:"pulldown", n:"Lat pulldown", load:"total", start:65, rest:90, s:"3 × 8–10",
+          c:["Machine stack weight.","Pull to your upper chest, elbows down and back."],
+          p:"Pull-ups and pulldowns both hit the lats — if your back is cooked by the row, drop this to 2 sets." },
+        { fig:"row", n:"Seated cable row", load:"total", start:65, rest:60, s:"3 × 10",
+          c:["Cable stack weight.","Chest tall, squeeze your shoulder blades together.","Do not rock back and forth to move it."], p:"" },
+        { fig:"fly", n:"Rear delt machine fly", load:"total", start:30, rest:60, s:"3 × 10–12",
+          c:["Reverse pec deck, or cables crossed over.","Lead with your elbows, not your hands.","25–40 lb to start."], p:"" },
+        { fig:"curl", n:"Dumbbell biceps curl", load:"total", pair:1, start:40, rest:60, s:"3 × 8–10",
+          c:["One dumbbell in each hand, palms facing up — 20 lb per hand to start.","No swinging, elbows stay still."], p:"" },
+        { fig:"curl", n:"Hammer curl", load:"total", pair:1, start:30, rest:60, s:"3 × 10",
+          c:["One dumbbell in each hand, palms facing IN (thumbs up).","Elbows tucked — 15 lb per hand to start."], p:"" },
+        { fig:"plank", n:"Cable woodchop", load:"total", start:20, rest:45, s:"3 × 10 each side",
+          c:["High cable to low, or low to high — pick one and stay with it.","Turn through your ribs, let your hips follow.","15–25 lb to start."], p:"" },
+        { fig:"plank", n:"Reverse crunch", load:"body", rest:45, s:"3 × 12",
+          c:["On your back, knees up and over your hips.","Lift your hips off the floor — small movement, all abs."], p:"" },
+        { fig:"row", n:"Farmer carry", load:"total", pair:1, start:60, rest:45, s:"3 × 40 sec",
+          c:["One heavy dumbbell in each hand, walk tall.","Shoulders back, ribs down, do not lean.","25–40 lb per hand to start."], p:"" },
+      ]};
+
+      const plan = [d1, d2, d3];
+      if (cardio) plan.forEach(d => { d.ex.push(Object.assign({}, fin)); d.burn += 50; });
+      /* Mark every movement as part of a written program: set counts are
+         deliberate, so nothing gets a burnout set bolted on. */
+      plan.forEach(d => d.ex.forEach(e => { e.fixed = 1; }));
+      /* Measure the session rather than claiming a length, so the label and
+         the session timer can never disagree. */
+      plan.forEach(d => {
+        let mins = 0;
+        try { mins = estimateMinutes(d); } catch(e) {}
+        d.meta = (mins ? "~" + mins + " min" : "") + " · core every session" +
+                 (cardio ? " · finisher last" : "");
+      });
+      return plan;
+    },
+  },
+};
+
 function kitAllowed(ex, kit) {
   if (ex.kit === "none") return true;
   if (ex.kit === "dumbbells") return kit === "dumbbells" || kit === "full";
@@ -3243,6 +3452,12 @@ function kitAllowed(ex, kit) {
 
 /* Build a plan from the answers given at setup. */
 function generatePlan(opts) {
+  /* A named program is used exactly as written — focus areas and the split
+     machinery do not apply, because its order and volume are deliberate. */
+  const prog = opts && opts.program && PROGRAMS[opts.program];
+  if (prog) {
+    try { return prog.build(opts); } catch(e) {}
+  }
   const days = SPLITS[opts.days] || SPLITS[4];
   const focus = opts.focus || [];
   const kit = opts.kit || "full";
@@ -3355,9 +3570,18 @@ function savePlan(plan) {
 function resetPlan() {
   PLAN_CACHE = null;
   localStorage.removeItem(LS_PLAN);
+  /* Someone on a named program expects a reset to restore THAT program, not
+     the stock four-day split. */
+  const su = getSetup();
+  let msg = "Plan reset to the original 4-day split.";
+  if (su && su.program && PROGRAMS[su.program]) {
+    try { savePlan(generatePlan(su)); msg = PROGRAMS[su.program].name + " restored as written."; } catch(e) {}
+  } else if (su) {
+    try { savePlan(generatePlan(su)); msg = "Plan rebuilt from your setup answers."; } catch(e) {}
+  }
   queuePush();
   renderCoach();
-  showToast(null, {ok:true, text:"Plan reset to the original 4-day split."});
+  showToast(null, {ok:true, text:msg});
 }
 
 /* Apply structured edits from the coach. Returns a list of plain-English
@@ -3880,15 +4104,27 @@ function setupScreen() {
   return '<div class="co-box setup"><div class="t">Set up your plan</div>' +
     '<div class="co-sub" style="margin-bottom:14px">Two minutes, then you get a plan built around what you actually want. You can change any of it later.</div>' +
 
+    '<div class="su-q">Which kind of plan?</div>' +
+    '<div class="su-opts" id="su-program">' +
+      '<button class="su-opt'+(!_setup.program?" on":"")+'" data-su="program" data-v="">Built around my focus areas</button>' +
+      Object.keys(PROGRAMS).map(k =>
+        '<button class="su-opt'+(_setup.program===k?" on":"")+'" data-su="program" data-v="'+k+'">'+esc(PROGRAMS[k].name)+'</button>').join("") +
+    '</div>' +
+    (_setup.program && PROGRAMS[_setup.program]
+      ? '<div class="co-sub" style="margin:-4px 0 14px">' + esc(PROGRAMS[_setup.program].blurb) +
+        ' Set days, loads and rest times already written in — ' + PROGRAMS[_setup.program].days +
+        ' days a week. The questions below about days and focus areas do not apply to it.</div>'
+      : "") +
+
     '<div class="su-q">How many days a week can you train?</div>' +
     '<div class="su-opts" id="su-days">' +
-      [2,3,4,5].map(n => '<button class="su-opt'+(n===_setup.days?" on":"")+'" data-su="days" data-v="'+n+'">'+n+' days</button>').join("") +
+      [2,3,4,5].map(n => '<button class="su-opt'+(n===_setup.days?" on":"")+(_setup.program?" dim":"")+'" data-su="days" data-v="'+n+'">'+n+' days</button>').join("") +
     '</div>' +
 
     '<div class="su-q">What do you most want to work on? Pick any.</div>' +
     '<div class="su-opts" id="su-focus">' +
       ["chest","back","legs","shoulders","arms","core"].map(g =>
-        '<button class="su-opt'+((_setup.focus||[]).indexOf(g)!==-1?" on":"")+'" data-su="focus" data-v="'+g+'">'+GROUP_LABELS[g]+'</button>').join("") +
+        '<button class="su-opt'+((_setup.focus||[]).indexOf(g)!==-1?" on":"")+(_setup.program?" dim":"")+'" data-su="focus" data-v="'+g+'">'+GROUP_LABELS[g]+'</button>').join("") +
     '</div>' +
 
     '<div class="su-q">What equipment do you have?</div>' +
@@ -3912,9 +4148,9 @@ function setupScreen() {
     '</div>' +
     '<div class="su-q">A few details, so weights and calories are sensible</div>' +
     '<div class="co-form">' +
-      '<div class="f"><label>Age</label><input id="su-age" inputmode="numeric" value="'+esc(p.age||"")+'"></div>' +
-      '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="su-height" inputmode="numeric" value="'+esc(p.height||"")+'"></div>' +
-      '<div class="f"><label>Weight '+getUnits()+'</label><input id="su-weight" inputmode="decimal" value="'+esc(p.weight||"")+'"></div>' +
+      '<div class="f"><label>Age</label><input id="su-age" inputmode="numeric" value="'+esc(setupProfVal("age"))+'"></div>' +
+      '<div class="f"><label>Height '+(getUnits()==="lb"?"in":"cm")+'</label><input id="su-height" inputmode="numeric" value="'+esc(setupProfVal("height"))+'"></div>' +
+      '<div class="f"><label>Weight '+getUnits()+'</label><input id="su-weight" inputmode="decimal" value="'+esc(setupProfVal("weight"))+'"></div>' +
     '</div>' +
     '<div class="unit-toggle" style="margin-top:10px"><span class="unit-label">Units</span>' +
       '<button class="unit-btn'+(getUnits()==="lb"?" on":"")+'" onclick="setUnits(\'lb\')">lb</button>' +
@@ -3925,14 +4161,16 @@ function setupScreen() {
   '</div>';
 }
 
-let _setup = { days: 4, focus: [], kit: "full", cardio: true, sex: "" };
+let _setup = { days: 4, focus: [], kit: "full", cardio: true, sex: "", program: "" };
 let _forceSetup = false;
 /* Reachable even if the app wrongly believes setup is finished. */
 function openSetup() {
   const cur = getSetup();
   const prof = getProfile();
+  _setupProf = null;
   if (cur) _setup = { days: cur.days, focus: (cur.focus||[]).slice(), kit: cur.kit,
-                      cardio: cur.cardio !== false, sex: prof.sex || "" };
+                      cardio: cur.cardio !== false, sex: prof.sex || "",
+                      program: cur.program || "" };
   else _setup.sex = prof.sex || _setup.sex || "";
   _forceSetup = true;
   if (currentTab !== "coach") switchTab("coach"); else renderCoach();
@@ -3951,17 +4189,45 @@ document.addEventListener("click", function(e) {
   if (k === "kit") _setup.kit = v;
   if (k === "cardio") _setup.cardio = (v === "yes");
   if (k === "sex") _setup.sex = v;
+  if (k === "program") {
+    _setup.program = v || "";
+    if (v && PROGRAMS[v]) _setup.days = PROGRAMS[v].days;
+    /* Keep anything already typed into the details before re-rendering, or
+       picking a program would wipe the age and weight boxes. */
+    stashSetupDetails();
+    if (currentTab !== "coach") switchTab("coach"); else renderCoach();
+    return;
+  }
   const wrap = el.parentNode;
   Array.prototype.forEach.call(wrap.children, c => c.classList.remove("on"));
   el.classList.add("on");
 });
 
+/* The setup details are plain inputs, so a re-render would lose them. */
+let _setupProf = null;
+function stashSetupDetails() {
+  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : null; };
+  const a = g("su-age"), h = g("su-height"), w = g("su-weight");
+  if (a === null && h === null && w === null) return;
+  _setupProf = { age: a || "", height: h || "", weight: w || "" };
+}
+function setupProfVal(field) {
+  const p = getProfile();
+  if (_setupProf && _setupProf[field]) return _setupProf[field];
+  return p[field] || "";
+}
+
 function finishSetup() {
   _forceSetup = false;
-  const g = id => { const el = document.getElementById(id); return el ? el.value.trim() : ""; };
-  const prof = { age: g("su-age"), height: g("su-height"), weight: g("su-weight"), unit: getUnits(), sex: _setup.sex || "" };
+  const g = id => { const el = document.getElementById(id); const v = el ? el.value.trim() : ""; return v; };
+  const pick = (id, field) => g(id) || (_setupProf ? _setupProf[field] : "") || "";
+  const prof = { age: pick("su-age","age"), height: pick("su-height","height"),
+                 weight: pick("su-weight","weight"), unit: getUnits(), sex: _setup.sex || "" };
   localStorage.setItem(LS_PROFILE, JSON.stringify(prof));
-  const opts = { days: _setup.days, focus: _setup.focus.slice(), kit: _setup.kit, cardio: _setup.cardio };
+  _setupProf = null;
+  const prog = _setup.program && PROGRAMS[_setup.program] ? _setup.program : "";
+  const opts = { days: prog ? PROGRAMS[prog].days : _setup.days, focus: _setup.focus.slice(),
+                 kit: _setup.kit, cardio: _setup.cardio, program: prog };
   localStorage.setItem(LS_SETUP, JSON.stringify(opts));
   try {
     const fresh = generatePlan(opts);
@@ -3981,8 +4247,13 @@ function finishSetup() {
     if (gl) gl.textContent = getGoal().toLocaleString();
   } catch(e) {}
   render();
-  showToast(null, {ok:true, text:"Plan built. " + _setup.days + " days a week" +
-    (_setup.focus.length ? ", extra work on " + _setup.focus.map(f=>GROUP_LABELS[f].toLowerCase()).join(" and ") : "") + "."});
+  if (prog) {
+    showToast(null, {ok:true, text:PROGRAMS[prog].name + " loaded. " + PROGRAMS[prog].days +
+      " days a week, starting loads already set."});
+  } else {
+    showToast(null, {ok:true, text:"Plan built. " + _setup.days + " days a week" +
+      (_setup.focus.length ? ", extra work on " + _setup.focus.map(f=>GROUP_LABELS[f].toLowerCase()).join(" and ") : "") + "."});
+  }
 }
 /* Change your mind later. */
 function reopenSetup() { openSetup(); }
@@ -3992,7 +4263,11 @@ function genericCoachNotes() {
   const su = getSetup();
   const m = (function(){ try { return calorieModel(); } catch(e) { return null; } })();
   const parts = [];
-  if (su && su.focus && su.focus.length) {
+  if (su && su.program && PROGRAMS[su.program]) {
+    const pr = PROGRAMS[su.program];
+    parts.push("You are on " + pr.name + " — " + pr.blurb + " " + pr.notes);
+    parts.push("Each session should land around 50–60 minutes including the warm-up, with the cardio finisher last.");
+  } else if (su && su.focus && su.focus.length) {
     parts.push("You asked for extra work on " + su.focus.map(f => (GROUP_LABELS[f]||f).toLowerCase()).join(" and ") +
       ", so those get more volume across the week.");
   }
