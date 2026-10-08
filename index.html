@@ -25,6 +25,9 @@
     --amber:#F5C33F; --amber-dim:#C9922A;
     --cyan:#12B3C7; --cyan-soft:#8FE1EB;
     --green:#12B3C7; --red:#C6483C;
+    /* A true green, kept apart from the cyan highlight, so the protein
+       traffic light reads as red / yellow / green and nothing else does. */
+    --good:#2E9E6B;
     --shadow:0 1px 3px rgba(18,58,90,.08), 0 6px 18px rgba(18,58,90,.06);
     --mono:'DM Mono','SF Mono',Menlo,monospace;
     --serif:'Fraunces','Iowan Old Style',Palatino,Georgia,serif;
@@ -448,6 +451,31 @@
   .pro-t { font-size:12px; color:var(--ink-dim); font-weight:400; }
   .pro-bar { height:4px; background:var(--line); border-radius:2px; overflow:hidden; margin-top:6px; }
   .pro-bar>div { height:100%; border-radius:2px; }
+  .pro-gap { font-size:10px; font-family:var(--mono); margin-top:5px; letter-spacing:.02em; }
+  .pro-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px;
+             vertical-align:middle; position:relative; top:-1px; }
+
+  /* ===== Every day movement ===== */
+  .mv-box { border-color:var(--cyan); }
+  .mv-top { display:flex; align-items:flex-end; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+  .mv-nums { font-family:var(--mono); font-size:22px; font-weight:700; line-height:1; }
+  .mv-nums span { font-size:12px; font-weight:400; color:var(--ink-dim); }
+  .mv-bar { height:7px; background:var(--line); border-radius:4px; overflow:hidden; margin:10px 0 2px; }
+  .mv-bar>div { height:100%; border-radius:4px; background:var(--cyan); transition:width .25s; }
+  .mv-slots { display:flex; gap:6px; margin:14px 0 10px; flex-wrap:wrap; }
+  .mv-tab { flex:1 1 auto; min-width:72px; border:1px solid var(--line); background:var(--panel);
+            color:var(--ink-dim); border-radius:11px; padding:8px 6px; font-family:var(--mono);
+            font-size:11px; cursor:pointer; text-align:center; }
+  .mv-tab.on { background:var(--cyan); border-color:var(--cyan); color:#fff; font-weight:700; }
+  .mv-tab .nw { display:block; font-size:9px; letter-spacing:.08em; opacity:.85; }
+  .mv-items { display:flex; flex-direction:column; gap:8px; }
+  .mv-item { display:block; width:100%; text-align:left; background:var(--panel-hi);
+             border:1px solid var(--line); border-radius:13px; padding:11px 14px; cursor:pointer; }
+  .mv-item:active { transform:scale(.995); }
+  .mv-n { font-weight:700; font-size:14.5px; }
+  .mv-m { font-family:var(--mono); font-size:12px; color:var(--cyan); margin-top:2px; }
+  .mv-note { font-size:12px; color:var(--ink-dim); margin-top:4px; line-height:1.45; }
+  .mv-done { font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:10px; }
   .m-pro { font-family:var(--mono); font-size:11px; color:#0A6C78; margin-top:3px; }
   .bk-check { display:flex; align-items:center; gap:9px; font-size:13.5px; color:var(--ink); margin-bottom:10px; cursor:pointer; }
   .bk-check input { width:20px; height:20px; accent-color:var(--cyan); }
@@ -611,7 +639,7 @@
 <script>
 "use strict";
 /* ============================ constants ============================ */
-const APP_VERSION = "v54";
+const APP_VERSION = "v55";
 
 
 const DEFAULT_GOAL = 1900;
@@ -1950,6 +1978,30 @@ function dayProtein(d) {
 function proteinTarget() {
   try { const m = calorieModel(); return m && m.protein ? m.protein : null; } catch(e) { return null; }
 }
+/* How much of the day's protein you could reasonably have eaten by now.
+   Judging a day in progress against the whole target would paint the tile
+   red every morning, which teaches you to ignore it. Protein arrives with
+   meals, so the curve runs breakfast to dinner, not evenly across 24 hours. */
+function proteinPace(dateISO) {
+  if (dateISO !== todayISO()) return 1;          /* a finished day is judged whole */
+  const now = new Date();
+  const h = now.getHours() + now.getMinutes() / 60;
+  const START = 8, END = 20, FLOOR = 0.15;
+  if (h <= START) return FLOOR;
+  if (h >= END) return 1;
+  return FLOOR + (1 - FLOOR) * ((h - START) / (END - START));
+}
+/* "low" | "ok" | "good" against what should be in you by this hour. */
+function proteinBand(pro, tgt, dateISO) {
+  if (!tgt) return null;
+  const due = tgt * proteinPace(dateISO);
+  const r = due > 0 ? pro / due : 1;
+  if (r >= 0.9) return "good";
+  if (r >= 0.7) return "ok";
+  return "low";
+}
+const PRO_COLOR = { low: "var(--red)", ok: "var(--amber)", good: "var(--good)" };
+const PRO_WORD  = { low: "well under", ok: "on the way", good: "on track" };
 function dayBurn(d) { return ((diary[d] && diary[d].exercise) ? diary[d].exercise : []).reduce((s,m)=>s+(m.kcal||0),0); }
 function dayNet(d) { return dayTotal(d) - dayBurn(d); }
 
@@ -4509,6 +4561,128 @@ function actChip(a, big) {
   '</div>';
 }
 
+/* ===== Every day · movement =====
+   The gym is three or four days a week. This is the other three or four, and
+   the point of it is what fits around a working day: a walk, the stairs, five
+   minutes at a desk. It logs CALORIES ONLY and deliberately does not count as
+   a training session, so a ten minute walk cannot persuade the coach you
+   lifted, or quietly push your maintenance estimate up and your goal with it.
+   Pace is split out on purpose: a stroll and a brisk walk are not the same
+   exercise, and the numbers here say so. */
+const MOVE_SLOTS = [
+  { k:"morning", label:"Morning", from:5, to:11, items:[
+    { n:"Canal walk, short", mins:15, met:2.8, note:"About 850 m at an easy pace." },
+    { n:"Brisk walk",        mins:20, met:4.3, note:"Same loop, fast enough that talking takes effort. Nearly double the burn of a stroll." },
+    { n:"Stairs",            mins:6,  met:8.0, note:"Up and down, steady. Short and genuinely hard." },
+  ]},
+  { k:"midday", label:"Midday", from:11, to:14, items:[
+    { n:"Walk after lunch",  mins:15, met:4.3, note:"Straight after eating. Takes the edge off the afternoon slump as well." },
+    { n:"Desk reset",        mins:5,  met:4.5, note:"20 air squats, 10 push-ups, 20 calf raises. No kit and no changing." },
+    { n:"Stairs",            mins:6,  met:8.0, note:"Four or five floors, twice over." },
+  ]},
+  { k:"afternoon", label:"Afternoon", from:14, to:18, items:[
+    { n:"Canal walk, long",  mins:20, met:2.8, note:"About 1.3 km. The usual loop." },
+    { n:"Walk a phone call", mins:20, met:3.5, note:"Take the next call on your feet and outside." },
+    { n:"Brisk walk",        mins:20, met:4.3, note:"Push the pace. Worth about half as much again as the same walk strolling." },
+  ]},
+  { k:"evening", label:"Evening", from:18, to:24, items:[
+    { n:"Evening walk",      mins:25, met:4.3, note:"After dinner, before the couch. The easiest one to actually do." },
+    { n:"Canal walk, long",  mins:20, met:2.8, note:"About 1.3 km in cooler air." },
+    { n:"Desk reset",        mins:5,  met:4.5, note:"20 air squats, 10 push-ups, 20 calf raises, while the kettle boils." },
+  ]},
+];
+function currentSlotKey() {
+  const h = new Date().getHours();
+  const s = MOVE_SLOTS.find(x => h >= x.from && h < x.to);
+  return s ? s.k : MOVE_SLOTS[0].k;
+}
+let _mvOpen = null;
+function openMoveSlot(k) { _mvOpen = k; renderCoach(); }
+function moveKcal(it) { return activityBurn(it.met, it.mins); }
+
+/* Movement entries carry a flag so they can be told apart from gym burn.
+   mergeItems keeps whole objects by id, so the flag survives a sync. */
+function todayMoves() {
+  const e = diary[todayISO()];
+  return (e && e.exercise) ? e.exercise.filter(x => x.mv) : [];
+}
+function todayMovement() {
+  return todayMoves().reduce((s,x) => s + (x.kcal || 0), 0);
+}
+/* Aimed at the gap you actually have, not a round number. Capped at 350
+   because past that it stops being something you can fit into a work day. */
+function movementTarget() {
+  let gap = 0;
+  try {
+    const avg = averages(loggedDates());
+    if (avg) gap = avg.consumed - getGoal();
+  } catch(e) {}
+  if (gap <= 0) return 250;
+  return Math.min(Math.max(Math.round(gap / 50) * 50, 150), 350);
+}
+function movementNote() {
+  let avg = null;
+  try { avg = averages(loggedDates()); } catch(e) {}
+  if (!avg) return "Short and often is what works here. This counts as calories burned, not as a gym session.";
+  const gap = avg.consumed - getGoal();
+  if (gap <= 0) {
+    return "You are averaging " + avg.consumed.toLocaleString() + " a day against a " +
+           getGoal().toLocaleString() + " goal, so you are already under it. This sits on top.";
+  }
+  const tgt = movementTarget();
+  const covers = Math.round(tgt / gap * 100);
+  return "You are averaging " + avg.consumed.toLocaleString() + " a day against a " +
+         getGoal().toLocaleString() + " goal, so about " + gap.toLocaleString() + " over. Hitting " +
+         tgt + " here covers roughly " + covers + "% of that. The rest has to come off the plate.";
+}
+function logMove(slotKey, idx) {
+  const slot = MOVE_SLOTS.find(s => s.k === slotKey);
+  if (!slot) return;
+  const it = slot.items[idx];
+  if (!it) return;
+  const burn = moveKcal(it);
+  const entry = ensureDay(todayISO());
+  entry.exercise.push({ id: newId(), name: it.n + " · " + it.mins + " min", kcal: burn, mv: 1 });
+  selected = todayISO();
+  try {
+    saveDiary();
+    const total = todayMovement();
+    showToast(null, {ok:true, text: it.n + " logged. " + burn + " cal, " + total + " from movement today."});
+  } catch(err) {
+    showToast(null, {ok:false, text:"Logged on screen but SAVE FAILED: " + err.message});
+  }
+  render();
+}
+function movementPanel() {
+  const open = _mvOpen || currentSlotKey();
+  const cur = currentSlotKey();
+  const done = todayMovement(), tgt = movementTarget();
+  const pct = Math.min(done / tgt, 1) * 100;
+  const slot = MOVE_SLOTS.find(s => s.k === open) || MOVE_SLOTS[0];
+  const logged = todayMoves();
+  return '<div class="co-box mv-box">' +
+    '<div class="t">Every day · movement</div>' +
+    '<div class="mv-top"><div class="mv-nums">' + done +
+      ' <span>of ' + tgt + ' cal today</span></div></div>' +
+    '<div class="mv-bar"><div style="width:' + pct + '%' +
+      (done >= tgt ? ';background:var(--good)' : '') + '"></div></div>' +
+    '<div class="co-sub" style="margin:8px 0 2px">' + esc(movementNote()) + '</div>' +
+    '<div class="mv-slots">' + MOVE_SLOTS.map(s =>
+      '<button class="mv-tab' + (s.k === open ? " on" : "") + '" onclick="openMoveSlot(\'' + s.k + '\')">' +
+        esc(s.label) + '<span class="nw">' + (s.k === cur ? "NOW" : " ") + '</span>' +
+      '</button>').join("") + '</div>' +
+    '<div class="mv-items">' + slot.items.map((it,i) =>
+      '<button class="mv-item" onclick="logMove(\'' + slot.k + '\',' + i + ')">' +
+        '<div class="mv-n">' + esc(it.n) + '</div>' +
+        '<div class="mv-m">' + it.mins + ' min · ' + moveKcal(it) + ' cal</div>' +
+        '<div class="mv-note">' + esc(it.note) + '</div>' +
+      '</button>').join("") + '</div>' +
+    (logged.length
+      ? '<div class="mv-done">Logged today: ' + esc(logged.map(x => x.name).join(", ")) + '</div>'
+      : '<div class="mv-done">Nothing logged yet today. Tap one when you do it.</div>') +
+  '</div>';
+}
+
 function renderCoach() {
   const v = document.getElementById("view-coach");
   if (needsSetup() || _forceSetup) { v.innerHTML = setupScreen(); return; }
@@ -4519,7 +4693,9 @@ function renderCoach() {
   const avg = averages(loggedDates());
 
   v.innerHTML =
-    /* 1. What to do, right at the top. */
+    /* 1. What to do, right at the top. Movement leads because it is the
+       one that applies every day, gym or not. */
+    movementPanel() +
     activityBar() +
     addActivityPanel() +
     prevPlanPanel() +
@@ -4953,10 +5129,15 @@ function renderLog() {
         const pro = dayProtein(selected), tgt = proteinTarget();
         if (!tgt) return chip("Protein", pro ? pro+" g" : "—");
         const pct = Math.min(pro / tgt, 1) * 100;
-        const hit = pro >= tgt * 0.9;
-        return '<div class="chip"><div class="l">Protein</div>' +
-          '<div class="v" style="color:'+(hit?"var(--cyan)":"var(--ink)")+'">'+pro+' <span class="pro-t">/ '+tgt+' g</span></div>' +
-          '<div class="pro-bar"><div style="width:'+pct+'%;background:'+(hit?"var(--cyan)":"var(--amber)")+'"></div></div>' +
+        const band = proteinBand(pro, tgt, selected);
+        const col = PRO_COLOR[band];
+        const left = Math.max(tgt - pro, 0);
+        return '<div class="chip" title="Red means well under where you should be by now, yellow means on the way, green means on track. Judged against the time of day, not just the daily total.">' +
+          '<div class="l">Protein</div>' +
+          '<div class="v" style="color:'+col+'">'+pro+' <span class="pro-t">/ '+tgt+' g</span></div>' +
+          '<div class="pro-bar"><div style="width:'+pct+'%;background:'+col+'"></div></div>' +
+          '<div class="pro-gap" style="color:'+col+'"><span class="pro-dot" style="background:'+col+'"></span>' +
+            (left ? left+" g to go · "+PRO_WORD[band] : "target met") + '</div>' +
         '</div>';
       })() +
     '</div>' + avgHtml + quickAddBar() + mealsHtml + exHtml +
